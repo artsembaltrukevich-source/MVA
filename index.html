@@ -479,10 +479,17 @@ async function callAI(prompt,o){
   return{text,cut};
 }
 function parseJsonLoose(t){
-  try{return JSON.parse(t)}catch(e){}
-  const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(e){}}
+  t=String(t||'');
+  const tryP=x=>{try{return{v:JSON.parse(x)}}catch(e){return null}};
+  // чат или iPhone могут заменить прямые кавычки на «умные» (“ ” „ ‟) и убрать пробелы: возвращаем прямые
+  const fix=x=>x.replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB]/g,'"').replace(/[\u2018\u2019\u201A\u201B]/g,"'").replace(/\u00A0/g,' ');
+  const variants=[t];
+  const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f)variants.push(f[1]);
   const a=t.search(/[\[{]/),b=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']'));
-  if(a>=0&&b>a){try{return JSON.parse(t.slice(a,b+1))}catch(e){}}
+  if(a>=0&&b>a)variants.push(t.slice(a,b+1));
+  for(const v of variants.slice()){const w=fix(v);if(w!==v)variants.push(w)}
+  for(const v of variants){const r=tryP(v);if(r)return r.v;
+    const r2=tryP(v.replace(/,\s*([}\]])/g,'$1'));if(r2)return r2.v}
   throw{code:'invalid_json'};
 }
 async function ai(prompt,signal,onProg,json=true){
