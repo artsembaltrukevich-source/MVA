@@ -69,6 +69,24 @@ td input,td select,td textarea{min-width:70px}
 td textarea{min-height:56px;min-width:220px}
 .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 tfoot td{font-weight:600;background:var(--bg)}
+.xt{border:1px solid #7a8791;font-family:Arial,Helvetica,sans-serif;border-collapse:collapse}
+.xt th,.xt td{border:1px solid #9aa5ad;padding:6px 8px;vertical-align:middle}
+.xt thead th{background:#1f3a4d;color:#fff;text-transform:none;letter-spacing:0;font-size:12.5px;text-align:center;white-space:normal;border-color:#1f3a4d}
+.xt tbody tr:nth-child(even) td{background:rgba(120,140,155,.10)}
+.xt tbody tr:hover td{background:rgba(70,130,180,.14)}
+.xt td:first-child{text-align:center;width:44px}
+.xt td.num{font-family:Arial,Helvetica,sans-serif}
+.xt tfoot td{background:#dfe7ec;color:#15222B;font-weight:700;border-top:2px solid #1f3a4d;font-size:14px}
+.xt tfoot td:first-child{text-align:left;width:auto}
+.xt tr:last-child td{border-bottom:1px solid #9aa5ad}
+.xt td textarea{border-color:transparent;background:transparent;min-height:44px}
+.xt td textarea:focus{background:var(--bg);border-color:var(--line)}
+.xt td select{font-size:12.5px}
+.xt td .hint{font-size:11.5px}
+.xt .cl{background:rgba(46,125,50,.16)!important;font-weight:700}
+.xt .co{background:rgba(198,40,40,.10)!important}
+@media (prefers-color-scheme:dark){.xt{border-color:#5d6a73}.xt th,.xt td{border-color:#4b5961}.xt thead th{background:#2b4a5e;border-color:#2b4a5e}.xt tfoot td{background:#26353f;color:#e8eef2;border-top-color:#7fa3ba}}
+
 .pill{display:inline-block;border-radius:99px;padding:1px 8px;font-size:11.5px;font-weight:600;white-space:nowrap}
 .pill.crit{background:var(--crit-bg);color:var(--crit)} .pill.ask{background:var(--warn-bg);color:var(--warn)} .pill.info{background:var(--info-bg);color:var(--info)} .pill.ok{background:var(--ok-bg);color:var(--ok)}
 .best{color:var(--ok);font-weight:600}
@@ -915,6 +933,7 @@ function renderTabs(){
   $('#rail').innerHTML=TABS.map(([k,l],i)=>{const s=tabState(k);return`<button type="button" data-tab="${k}"${tab===k?' aria-current="step"':''}><span class="n${s.done?' done':''}">${s.done?'✓':i+1}</span><span>${l}<small>${esc(s.sub)}</small></span></button>`}).join('');
 }
 function renderAll(){renderHeader();renderTabs();const m=$('#main');({req:vReq,off:vOff,calc:vCalc,cli:vCli,rep:vRep,st:vSt,inv:vInv}[tab])(m)}
+const langSeg=()=>`<div class="row2"><span class="hint">Язык клиента:</span><span class="seg" role="group" aria-label="Язык клиента"><button type="button" data-lang="ru" aria-pressed="${S.clientLang==='ru'}">RU</button><button type="button" data-lang="uk" aria-pressed="${S.clientLang==='uk'}">UK</button></span></div>`;
 function needReq(m,txt){m.innerHTML=`<section class="card"><h2>Сначала загрузите запрос</h2><p class="sub">${txt}</p><button class="btn pri" data-go="req" type="button">К запросу</button></section>`}
 
 function vReq(m){
@@ -1028,6 +1047,7 @@ function vCalc(m){
   m.innerHTML=`
   <section class="card">
     <h2>Калькулятор</h2>
+    ${langSeg()}
     <p class="sub">Цена поставщика пересчитывается в EUR по курсу, затем умножается на наценку. По умолчанию выбран самый дешёвый поставщик по каждой позиции.</p>
     <div class="grid" style="max-width:520px;margin-bottom:12px">
       <label class="f">Курс, PLN за 1 EUR<input type="number" step="0.0001" id="rate" value="${S.rate}"></label>
@@ -1044,12 +1064,12 @@ function vCalc(m){
       <div class="stat"><b>${fmt(t.pct,1)}%</b><span>Маржа от цены клиенту</span></div>
     </div>
     ${t.miss?`<p class="stale">Позиций без цены: ${t.miss}. Они не вошли в итог.</p>`:''}
-    <div class="tw"><table><thead><tr><th>№</th><th>Позиция</th><th>Кол-во</th><th>Поставщик</th><th>Цена пост.</th><th>EUR/ед</th><th>Наценка ×</th><th>Клиенту/ед</th><th>Сумма клиенту</th><th>Маржа %</th></tr></thead><tbody>
+    <div class="tw"><table class="xt"><thead><tr><th>№</th><th>Позиция</th><th>Кол-во</th><th>Поставщик</th><th>Цена пост.</th><th>EUR/ед</th><th>Наценка ×</th><th>Клиенту/ед</th><th>Сумма клиенту</th><th>Маржа %</th></tr></thead><tbody>
     ${rows.map(r=>{const it=r.it;return`<tr data-no="${esc(it.no)}"><td>${esc(it.no)}</td><td style="min-width:200px">${esc(it.name)}<div class="hint">${esc(it.params)}</div></td><td class="num">${it.qty==null?'?':fmt(it.qty,it.qty%1?2:0)}</td>
     <td><select data-sup>${r.cs.length?r.cs.map(c=>`<option value="${esc(c.o.id)}"${r.ch&&c.o===r.ch.o?' selected':''}>${esc(c.o.supplier)} — ${fmt(c.eur)} EUR${r.b&&c===r.b?' ★':''}</option>`).join(''):'<option>нет цены</option>'}</select></td>
-    <td class="num">${r.ch?fmt(r.ch.cur)+' '+esc(r.ch.o.currency):'—'}</td><td class="num">${fmt(r.cost)}</td>
+    <td class="num co">${r.ch?fmt(r.ch.cur)+' '+esc(r.ch.o.currency):'—'}</td><td class="num co">${fmt(r.cost)}</td>
     <td><select data-mk style="width:96px">${mkOpts(S.rows[it.no]&&num(S.rows[it.no].markup)!=null?S.rows[it.no].markup:'','по умолч.')}</select></td>
-    <td class="num">${fmt(r.sale)}</td><td class="num">${fmt(r.saleT)}</td><td class="num">${r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'}</td></tr>`}).join('')}
+    <td class="num cl">${fmt(r.sale)}</td><td class="num cl">${fmt(r.saleT)}</td><td class="num">${r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'}</td></tr>`}).join('')}
     </tbody><tfoot><tr><td colspan="8">Итого</td><td class="num">${fmt(t.sale)}</td><td class="num">${fmt(t.pct,1)}</td></tr></tfoot></table></div>
     <div class="row2"><button class="btn pri" id="xCalc" type="button">Скачать калькулятор .xlsx</button><button class="btn" id="resetMk" type="button">Сбросить индивидуальные наценки</button><span class="hint">Файл содержит маржу и курс. Клиенту его не отправляйте, для этого есть вкладка «Оферта клиенту».</span></div>
   </section>`;
@@ -1075,6 +1095,7 @@ function vCli(m){
   m.innerHTML=`
   <section class="card">
     <h2>${L.title}</h2>
+    ${langSeg()}
     <p class="sub">Версия для клиента: только цены за единицу и суммы в валюте предложения (${saleCur()}). Маржа, курс и поставщики здесь не показываются и в файл не попадают. Язык переключается кнопками RU / UK вверху.</p>
     <div class="grid" style="margin-bottom:12px">
       <label class="f">${L.to}<input type="text" id="cName" value="${esc(c.name)}"></label>
@@ -1086,7 +1107,7 @@ function vCli(m){
       <label class="f">${L.incoterms}<input type="text" id="cInc" value="${esc(c.incoterms)}"></label>
     </div>
     <div class="row2"><button class="btn" id="cAuto" type="button">Подставить условия из предложений</button><button class="btn" id="cDesc" type="button">Описания на ${S.clientLang==='uk'?'украинском':'русском'} (ИИ)</button>${codeBlocks().length?`<button class="btn" id="cCodes" type="button">Коды привода с расшифровкой (ИИ)</button>`:''}</div>
-    <div class="tw"><table><thead><tr><th>${L.no}</th><th>${L.desc}</th><th>${L.qty}</th><th>${L.unit}</th><th>${L.price}</th><th>${L.sum}</th></tr></thead><tbody>
+    <div class="tw"><table class="xt"><thead><tr><th>${L.no}</th><th>${L.desc}</th><th>${L.qty}</th><th>${L.unit}</th><th>${L.price}</th><th>${L.sum}</th></tr></thead><tbody>
     ${rows.map(x=>`<tr data-no="${esc(x.no)}"><td>${esc(x.no)}</td><td><textarea data-desc>${esc(x.desc)}</textarea></td><td class="num">${x.qty==null?'':fmt(x.qty,x.qty%1?2:0)}</td><td>${esc(x.unit||L.pcs)}</td><td class="num">${x.price==null?L.onreq:fmt(x.price)}</td><td class="num">${x.sum==null?'—':fmt(x.sum)}</td></tr>`).join('')}
     </tbody><tfoot><tr><td colspan="5">${L.total}</td><td class="num">${fmt(t.sale)}</td></tr></tfoot></table></div>
     <p class="hint">${L.vat}</p>
@@ -1267,6 +1288,7 @@ function vInv(m){
 
 /* ---------- wiring ---------- */
 document.addEventListener('click',e=>{
+  const lg=e.target.closest('[data-lang]');if(lg){S.clientLang=lg.dataset.lang;changed();renderAll();return}
   const t=e.target.closest('[data-tab]');if(t&&!ctl){tab=t.dataset.tab;delOffer=-1;renderAll();window.scrollTo(0,0);return}
   const g=e.target.closest('[data-go]');if(g){tab=g.dataset.go;renderAll();window.scrollTo(0,0)}
 });
