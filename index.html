@@ -90,6 +90,7 @@ tfoot td{font-weight:600;background:var(--bg)}
 .pill{display:inline-block;border-radius:99px;padding:1px 8px;font-size:11.5px;font-weight:600;white-space:nowrap}
 .pill.crit{background:var(--crit-bg);color:var(--crit)} .pill.ask{background:var(--warn-bg);color:var(--warn)} .pill.info{background:var(--info-bg);color:var(--info)} .pill.ok{background:var(--ok-bg);color:var(--ok)}
 .best{color:var(--ok);font-weight:600}
+.warnbox{border:1px solid var(--warn);background:var(--warn-bg);border-radius:6px;padding:10px 12px;margin:10px 0}
 .row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-block:10px}
 .stats{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:12px}
 .stat{border:1px solid var(--line);border-radius:6px;padding:10px 12px}
@@ -244,6 +245,8 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <label class="f" id="lKey" style="grid-column:1/-1">API-ключ<input type="password" id="sKey" autocomplete="off" placeholder="вставьте ключ"></label>
   </div>
   <p class="hint" id="sHint"></p>
+  <div class="grid" style="margin-top:8px"><label class="f" style="grid-column:1/-1">Сверка вторым ИИ (разбор запроса и оферт делают два ИИ, расхождения в цифрах подсвечиваются)<select id="sVer"></select></label></div>
+  <p class="hint">Для сверки нужен ключ второго сервиса: введите его, выбрав этот сервис в списке выше, и нажмите «Сохранить». Запросов будет вдвое больше. В ручном режиме сверка недоступна.</p>
   <div class="row2"><button class="btn pri" id="sSave" type="button">Сохранить</button><button class="btn" id="sTest" type="button">Проверить связь</button><button class="btn" id="sClose" type="button">Закрыть</button></div>
   <p class="hint" id="sRes" role="status"></p>
   <h3 style="margin-top:14px">Резервная копия</h3>
@@ -420,8 +423,10 @@ function inClaude(){return !!(window.claude&&window.claude.use)}
 function loadCfg(){try{const c=JSON.parse(localStorage.getItem('mva_ai')||'null');if(c&&c.provider&&DEF[c.provider]&&(c.provider!=='sample'||inClaude()))return Object.assign({keys:{},models:{}},c)}catch(e){}return{provider:inClaude()?'sample':'manual',keys:{},models:{}}}
 let CFG=loadCfg();
 function saveCfg(){try{localStorage.setItem('mva_ai',JSON.stringify(CFG));return true}catch(e){toast('Не удалось сохранить настройки в браузере');return false}}
-const curKey=()=>CFG.provider==='manual'||CFG.provider==='sample'?CFG.provider:(CFG.keys[CFG.provider]||'').trim();
-const curModel=()=>CFG.provider==='manual'||CFG.provider==='sample'?'':((CFG.models[CFG.provider]||'').trim()||DEF[CFG.provider].model);
+const keyOf=p=>p==='manual'||p==='sample'?p:(CFG.keys[p]||'').trim();
+const modelOf=p=>p==='manual'||p==='sample'?'':((CFG.models[p]||'').trim()||DEF[p].model);
+const curKey=()=>keyOf(CFG.provider);
+const curModel=()=>modelOf(CFG.provider);
 function b64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(r.error);r.readAsDataURL(blob)})}
 const MANUAL_OCR='В ручном режиме сканы и фото не читаются автоматически. Прикрепите файл в чате ИИ с просьбой дословно переписать текст и вставьте результат в поле «Текст запроса» или «Текст предложения».';
 function manualAsk(prompt,o){
@@ -440,8 +445,8 @@ function manualAsk(prompt,o){
   });
 }
 async function callAI(prompt,o){
-  o=o||{};
-  if(CFG.provider==='sample'){
+  o=o||{};const PV=o.prov||CFG.provider;
+  if(PV==='sample'){
     const sm=inClaude()?await window.claude.use('sample'):null;
     if(!sm)throw{message:'Встроенный Claude недоступен в этом окне. Выберите другой режим в «Настройках ИИ».'};
     try{
@@ -452,9 +457,9 @@ async function callAI(prompt,o){
       return{text:r.text,cut:!!r.truncated};
     }catch(e){if(e&&e.code==='cancelled')throw{code:'cancelled'};if(e&&e.code==='rate_limited')throw{code:'rate_limited',message:e.message};throw e}
   }
-  if(CFG.provider==='manual'){if((o.images||[]).length)throw{message:MANUAL_OCR};return manualAsk(prompt,o)}
-  const key=curKey();if(!key)throw{code:'no_key'};
-  const prov=CFG.provider,model=curModel();
+  if(PV==='manual'){if((o.images||[]).length)throw{message:MANUAL_OCR};return manualAsk(prompt,o)}
+  const key=keyOf(PV);if(!key)throw{code:'no_key'};
+  const prov=PV,model=modelOf(PV);
   const imgs=await Promise.all((o.images||[]).map(async b=>({mime:b.type||'image/jpeg',data:await b64(b)})));
   let url,headers,body;
   if(prov==='anthropic'){
@@ -510,8 +515,8 @@ function parseJsonLoose(t){
     const r2=tryP(v.replace(/,\s*([}\]])/g,'$1'));if(r2)return r2.v}
   throw{code:'invalid_json'};
 }
-async function ai(prompt,signal,onProg,json=true){
-  const r=await callAI(prompt,{signal,onProg});
+async function ai(prompt,signal,onProg,json=true,prov){
+  const r=await callAI(prompt,{signal,onProg,prov});
   if(!json)return r.text;
   try{return parseJsonLoose(r.text)}catch(e){throw{code:r.cut?'truncated':'invalid_json'}}
 }
@@ -607,6 +612,53 @@ async function readFile(f,ctx){
 const clip=(t,n=180000)=>t.length>n?t.slice(0,n)+'\n[...документ обрезан...]':t;
 
 /* ---------- step 1: request ---------- */
+
+/* ---------- сверка вторым ИИ ---------- */
+function verProv(){const v=CFG.verify;if(!v||v===CFG.provider||v==='manual')return null;if(v==='sample'&&!inClaude())return null;return keyOf(v)?v:null}
+const nrm=x=>String(x==null?'':x).toLowerCase().replace(/[\s.,;:\-_/\\()]+/g,'');
+const sameNum=(a,b)=>{a=num(a);b=num(b);if(a==null&&b==null)return true;if(a==null||b==null)return false;return Math.abs(a-b)<=Math.max(0.005,Math.abs(a)*0.0005)};
+async function askBoth(p,signal,prog){
+  const v=verProv();
+  if(!v)return{a:await ai(p,signal,prog),b:null};
+  const [ra,rb]=await Promise.allSettled([ai(p,signal,t=>prog&&prog('ИИ 1: '+t),true),ai(p,signal,t=>prog&&prog('ИИ 2: '+t),true,v)]);
+  if(ra.status==='rejected'){if(ra.reason&&ra.reason.code==='cancelled')throw ra.reason;if(rb.status==='fulfilled')return{a:rb.value,b:null,note:'Основной ИИ не ответил ('+errText(ra.reason)+'), использован второй. Сверки нет.'};throw ra.reason}
+  if(rb.status==='rejected'){if(rb.reason&&rb.reason.code==='cancelled')throw rb.reason;return{a:ra.value,b:null,note:'Второй ИИ не ответил: '+errText(rb.reason)+'. Сверки нет.'}}
+  return{a:ra.value,b:rb.value,by:DEF[v].short}
+}
+function diffOffer(A,B){
+  const out=[];const add=(field,li,label,a,b)=>out.push({field,li,label,a,b});
+  ['currency','price_basis'].forEach(k=>{if(nrm(A[k])!==nrm(B[k]))add(k==='currency'?'currency':'basis',-1,k==='currency'?'Валюта':'Цены нетто/брутто',A[k]||'—',B[k]||'—')});
+  if(nrm(A.number)!==nrm(B.number)&&(A.number||B.number))add('number',-1,'Номер оферты',A.number||'—',B.number||'—');
+  const la=A.lines||[],lb=B.lines||[];
+  if(la.length!==lb.length)add('count',-1,'Число строк',String(la.length),String(lb.length));
+  const used=new Set();
+  la.forEach((x,i)=>{
+    let j=-1;const ka=nrm(x.article);
+    if(ka){j=lb.findIndex((y,k)=>!used.has(k)&&nrm(y.article)===ka)}
+    if(j<0&&la.length===lb.length&&!used.has(i))j=i;
+    if(j<0){add('line',i,'Строка '+(i+1)+(x.article?' ('+x.article+')':''),'есть','нет у второго ИИ');return}
+    used.add(j);const y=lb[j],nm='Строка '+(i+1)+(x.article?' ('+x.article+')':'');
+    const pa=num(x.unit_price)!=null?num(x.unit_price):(num(x.line_total)!=null&&num(x.qty)?num(x.line_total)/num(x.qty):null);
+    const pb=num(y.unit_price)!=null?num(y.unit_price):(num(y.line_total)!=null&&num(y.qty)?num(y.line_total)/num(y.qty):null);
+    if(!sameNum(pa,pb))add('price',i,nm+': цена за ед.',pa==null?'—':String(Math.round(pa*10000)/10000),pb==null?'—':String(Math.round(pb*10000)/10000));
+    if(!sameNum(x.qty,y.qty))add('qty',i,nm+': количество',x.qty==null?'—':String(x.qty),y.qty==null?'—':String(y.qty));
+    if(x.article&&y.article&&nrm(x.article)!==nrm(y.article))add('article',i,nm+': артикул',x.article,y.article);
+  });
+  lb.forEach((y,k)=>{if(!used.has(k))add('line',-1,'Строка у второго ИИ ('+(y.article||y.description||k+1)+')','нет','есть')});
+  return out;
+}
+function diffReq(A,B){
+  const out=[];const ia=A.items||[],ib=B.items||[];
+  if(ia.length!==ib.length)out.push({label:'Число позиций',a:String(ia.length),b:String(ib.length)});
+  ia.forEach((x,i)=>{const y=ib.find(z=>String(z.no)===String(x.no))||(ia.length===ib.length?ib[i]:null);const nm='Позиция '+(x.no||i+1);
+    if(!y){out.push({label:nm,a:'есть',b:'нет у второго ИИ'});return}
+    if(!sameNum(x.qty,y.qty))out.push({label:nm+': количество',a:x.qty==null?'—':String(x.qty),b:y.qty==null?'—':String(y.qty)});
+    if(nrm(x.unit)!==nrm(y.unit)&&(x.unit||y.unit))out.push({label:nm+': ед. изм.',a:x.unit||'—',b:y.unit||'—'});
+    const dn=t=>(String(t||'').match(/\b(?:DN|PN|Ду|Ру)\s*\d+/gi)||[]).map(nrm).sort().join(',');
+    if(dn(x.name+' '+x.params)!==dn(y.name+' '+y.params))out.push({label:nm+': DN/PN',a:dn(x.name+' '+x.params)||'—',b:dn(y.name+' '+y.params)||'—'})});
+  return out;
+}
+
 async function parseRequest(signal,prog){
   const p=`Ты помощник инженера по закупкам промышленной арматуры, насосов и автоматики. Ниже текст запроса клиента (русский или украинский; может быть выгрузка таблицы в CSV). Извлеки позиции.
 Верни только JSON: {"language":"ru"|"uk"|"other","title":string,"required_delivery_text":string|null,"required_delivery_days":number|null,"conditions":string|null,"items":[{"no":string,"name":string,"qty":number|null,"unit":string|null,"params":string}]}
@@ -614,10 +666,12 @@ async function parseRequest(signal,prog){
 
 ТЕКСТ ЗАПРОСА:
 ${clip(S.reqText)}`;
-  const r=await ai(p,signal,prog);
+  const both=await askBoth(p,signal,prog),r=both.a;
   if(!r||!Array.isArray(r.items)||!r.items.length)throw{message:'Позиции в запросе не найдены. Проверьте текст.'};
   S.req={title:r.title||'',requiredText:r.required_delivery_text||'',requiredDays:num(r.required_delivery_days),conditions:r.conditions||'',items:r.items.map((i,k)=>({no:String(i.no||k+1),name:String(i.name||''),qty:num(i.qty),unit:i.unit||'',params:i.params||''}))};
   if(r.language==='uk'||r.language==='ru')S.clientLang=r.language;
+  S.req.verify=both.b?{by:both.by,diffs:diffReq(r,both.b)}:(both.note?{note:both.note,diffs:[]}:null);
+  if(S.req.verify&&S.req.verify.diffs.length)toast('Сверка двумя ИИ: расхождений '+S.req.verify.diffs.length+'. Смотрите «Отчёт».');
   if(S.name==='Новый проект'&&S.req.title)S.name=S.req.title.slice(0,80);
   S.tr={};S.ai=null;
 }
@@ -684,13 +738,16 @@ ${reqList}
 
 ПРЕДЛОЖЕНИЕ ПОСТАВЩИКА (${fname}):
 ${clip(text,150000)}`;
-  const r=await ai(p,signal,prog);
+  const both=await askBoth(p,signal,prog),r=both.a;
   if(!r||!Array.isArray(r.lines)||!r.lines.length)throw{message:'В предложении не найдены строки с позициями ('+fname+').'};
   const cur=String(r.currency||'').toUpperCase();
   const o={id:uid(),file:fname,supplier:r.supplier||fname,number:r.number||'',date:r.date||'',currency:cur,fx:null,basis:r.price_basis||'unknown',validityText:r.validity_text||'',validityDate:r.validity_date||'',payment:r.payment||'',deliveryText:r.delivery_text||'',incoterms:r.incoterms||'',notes:r.notes||'',
     lines:r.lines.map(l=>{const q=num(l.qty);let pr=num(l.unit_price);const lt=num(l.line_total);if(pr==null&&lt!=null&&q)pr=r2(lt/q);
       const it=l.item==null?'':String(l.item);
       return{id:uid(),item:S.req&&S.req.items.some(x=>x.no===it)?it:'',article:l.article||'',desc:l.description||'',qty:q,unit:l.unit||'',price:pr,lead:l.lead_text||'',leadDays:num(l.lead_days),note:l.note||'',code:l.order_code||'',equip:Array.isArray(l.equipment)?l.equipment.map(e=>({code:String(e.code||''),txt:String(e.meaning||'')})).filter(e=>e.code||e.txt):[],opt:false}})};
+  if(both.b&&Array.isArray(both.b.lines)){o.verify={by:both.by,diffs:diffOffer(r,both.b)};o.verifyRaw=both.b.lines.map(l=>({article:l.article||'',qty:num(l.qty),price:num(l.unit_price)!=null?num(l.unit_price):(num(l.line_total)!=null&&num(l.qty)?r2(num(l.line_total)/num(l.qty)):null)}));o.verifyCur=both.b.currency||'';o.verifyBasis=both.b.price_basis||''}
+  else if(both.note)o.verify={note:both.note,diffs:[]};
+  if(o.verify&&o.verify.diffs.length)toast('Сверка двумя ИИ: расхождений '+o.verify.diffs.length+' в оферте «'+o.supplier+'».');
   S.offers.push(o);S.ai=null;
   if(!S.req)reqFromOffer(o);
 }
@@ -808,6 +865,104 @@ function cliXlsx(){
     w2['!ref']='A1:C'+q;w2['!cols']=[{wch:8},{wch:48},{wch:100}];XLSX.utils.book_append_sheet(wb,w2,S.clientLang==='uk'?'Опис':'Описание')}
   return xblob(wb);
 }
+
+/* ---------- красивый Excel (ExcelJS подгружается при первом скачивании) ---------- */
+let _exj=null;
+function loadExcelJS(){
+  if(window.ExcelJS)return Promise.resolve(window.ExcelJS);
+  if(_exj)return _exj;
+  _exj=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';sc.onload=()=>window.ExcelJS?res(window.ExcelJS):rej(new Error('exceljs'));sc.onerror=()=>{_exj=null;rej(new Error('exceljs'))};document.head.appendChild(sc)});
+  return _exj;
+}
+const XF='Arial',NAVY='FF1F3A4D',ZEBRA='FFF2F5F7',LINE='FF9AA5AD',TOTAL='FFDFE7EC';
+const bdr=(c=LINE)=>({top:{style:'thin',color:{argb:c}},left:{style:'thin',color:{argb:c}},bottom:{style:'thin',color:{argb:c}},right:{style:'thin',color:{argb:c}}});
+const fillA=a=>({type:'pattern',pattern:'solid',fgColor:{argb:a}});
+const linesEst=(t,w)=>String(t||'').split('\n').reduce((n,x)=>n+Math.max(1,Math.ceil(x.length/w)),0);
+async function cliXlsxPretty(){
+  const EJ=await loadExcelJS();const L=Lc(),c=S.client,rows=cliRows();
+  const wb=new EJ.Workbook();wb.creator='';wb.created=new Date();
+  const ws=wb.addWorksheet(S.clientLang==='uk'?'Пропозиція':'Предложение',{views:[{showGridLines:false}],pageSetup:{paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true,margins:{left:.5,right:.5,top:.6,bottom:.6,header:.3,footer:.3}}});
+  ws.columns=[{width:6},{width:64},{width:10},{width:8},{width:17},{width:17}];
+  const font=(o={})=>Object.assign({name:XF,size:10},o);
+  ws.mergeCells('A1:F1');const h1=ws.getCell('A1');h1.value=L.title+(c.number?' № '+c.number:'');h1.font=font({size:16,bold:true,color:{argb:'FFFFFFFF'}});h1.fill=fillA(NAVY);h1.alignment={vertical:'middle',indent:1};ws.getRow(1).height=34;
+  const dRu=String(c.date||'').replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$3.$2.$1');const info=[[L.date,dRu],[L.to,c.name]].filter(x=>x[1]);let r=3;
+  info.forEach(([k,v])=>{ws.getCell('A'+r).value={richText:[{text:k+': ',font:font({bold:true,color:{argb:'FF5B6B75'}})},{text:String(v),font:font({bold:true})}]};ws.mergeCells(`A${r}:F${r}`);r++});
+  r++;const hr=r;
+  [L.no,L.desc,L.qty,L.unit,L.price,L.sum].forEach((v,i)=>{const x=ws.getCell(r,i+1);x.value=v;x.font=font({bold:true,color:{argb:'FFFFFFFF'}});x.fill=fillA(NAVY);x.border=bdr(NAVY);x.alignment={vertical:'middle',horizontal:'center',wrapText:true}});ws.getRow(r).height=32;r++;
+  const f=r;
+  rows.forEach((x,i)=>{
+    const z=i%2?fillA(ZEBRA):null;
+    const vals=[x.no,x.desc,x.qty==null?null:x.qty,x.unit||L.pcs,x.price,null];
+    vals.forEach((v,k)=>{const cell=ws.getCell(r,k+1);if(k<5&&v!=null)cell.value=v;cell.font=font();cell.border=bdr();if(z)cell.fill=z;cell.alignment={vertical:'middle',wrapText:true,horizontal:k===1?'left':k===4||k===5?'right':'center'}});
+    if(x.price==null){const cell=ws.getCell(r,5);cell.value=L.onreq;cell.font=font({italic:true,color:{argb:'FF8A5200'}})}
+    ws.getCell(r,5).numFmt='#,##0.00';ws.getCell(r,6).numFmt='#,##0.00';
+    ws.getCell(r,6).value=x.price!=null?{formula:`E${r}*C${r}`,result:x.sum}:null;
+    ws.getCell(r,3).numFmt='0.##';
+    ws.getRow(r).height=Math.max(24,14*linesEst(x.desc,70)+8);
+    r++});
+  const l=r-1;
+  ws.mergeCells(`A${r}:E${r}`);const tl=ws.getCell('A'+r);tl.value=L.total+' ('+saleCur()+')';tl.font=font({size:11,bold:true});tl.alignment={horizontal:'right',vertical:'middle',indent:1};
+  const tt=ws.getCell('F'+r);tt.value={formula:`SUM(F${f}:F${l})`,result:cliTotal(rows)};tt.numFmt='#,##0.00';tt.font=font({size:12,bold:true});tt.alignment={horizontal:'right',vertical:'middle'};
+  for(let k=1;k<=6;k++){const x=ws.getCell(r,k);x.fill=fillA(TOTAL);x.border={top:{style:'medium',color:{argb:NAVY}},bottom:{style:'medium',color:{argb:NAVY}},left:{style:'thin',color:{argb:LINE}},right:{style:'thin',color:{argb:LINE}}}}
+  ws.getRow(r).height=26;r+=2;
+  const note=ws.getCell('A'+r);note.value=L.vat;note.font=font({italic:true,color:{argb:'FF5B6B75'},size:9});ws.mergeCells(`A${r}:F${r}`);r+=2;
+  const conds=[[L.validity,c.validity],[L.delivery,c.delivery],[L.payment,c.payment],[L.incoterms,c.incoterms]].filter(x=>x[1]);
+  conds.forEach(([k,v])=>{const x=ws.getCell('A'+r);x.value={richText:[{text:k+': ',font:font({bold:true,color:{argb:NAVY}})},{text:String(v),font:font()}]};x.alignment={wrapText:true,vertical:'top'};ws.mergeCells(`A${r}:F${r}`);ws.getRow(r).height=Math.max(16,14*linesEst(k+': '+v,110));r++});
+  ws.pageSetup.printArea=`A1:F${r}`;ws.headerFooter={oddFooter:'&R&9&P / &N'};
+  // техническое описание кодов
+  const cb=S.client.codes!==false?codeBlocks().filter(b=>b.lines.some(l=>l.equip.some(codeTxt))):[];
+  if(cb.length){
+    const w2=wb.addWorksheet(S.clientLang==='uk'?'Опис':'Описание',{views:[{showGridLines:false,state:'frozen',ySplit:3}],pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}});
+    w2.columns=[{width:9},{width:38},{width:95}];
+    w2.mergeCells('A1:C1');const q1=w2.getCell('A1');q1.value=S.clientLang==='uk'?'Технічний опис обладнання':'Техническое описание оборудования';q1.font={name:XF,size:14,bold:true,color:{argb:NAVY}};w2.getRow(1).height=24;
+    const H=S.clientLang==='uk'?['Поз.','Код','Розшифровка']:['Поз.','Код','Расшифровка'];
+    H.forEach((v,i)=>{const x=w2.getCell(3,i+1);x.value=v;x.font={name:XF,size:10,bold:true};x.fill=fillA('FFD9D9D9');x.border=bdr('FF7A8791');x.alignment={vertical:'middle',horizontal:i===2?'left':'center'}});
+    let q=4;
+    const put=(a,b2,c2,bold)=>{[a,b2,c2].forEach((v,i)=>{const x=w2.getCell(q,i+1);x.value=v;x.font={name:XF,size:10,bold:!!bold};x.border=bdr();x.alignment={vertical:'top',wrapText:true,horizontal:i===0?'center':'left'}});w2.getRow(q).height=Math.max(18,14*Math.max(linesEst(c2,100),linesEst(b2,40))+4);q++};
+    cb.forEach(b=>b.lines.forEach(l=>{put('Поз. '+b.no,l.code||l.article||'',b.name,true);l.equip.filter(codeTxt).forEach(e=>put('',e.code,codeTxt(e),false))}));
+    w2.pageSetup.printTitlesRow='3:3';
+  }
+  const buf=await wb.xlsx.writeBuffer();
+  return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+async function calcXlsxPretty(){
+  const EJ=await loadExcelJS();const rows=S.req.items.map(rowInfo);
+  const wb=new EJ.Workbook();wb.creator='MVA Industries';
+  const ws=wb.addWorksheet('Kalkulator ofertowy MVA',{views:[{state:'frozen',ySplit:3,showGridLines:false}],pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  ws.columns=[{width:5},{width:70},{width:8},{width:13},{width:14},{width:13},{width:15},{width:17},{width:14},{width:14}];
+  const ft=(o={})=>Object.assign({name:XF,size:10},o);
+  ws.mergeCells('A1:J1');const a1=ws.getCell('A1');a1.value='Kalkulator ofertowy MVA';a1.font=ft({size:15,bold:true,color:{argb:'FFFFFFFF'}});a1.fill=fillA(NAVY);a1.alignment={vertical:'middle',indent:1};ws.getRow(1).height=28;
+  ws.mergeCells('A2:H2');const a2=ws.getCell('A2');a2.value=S.name;a2.font=ft({bold:true});
+  ws.getCell('I2').value='Курс PLN/EUR';ws.getCell('I2').font=ft({bold:true,size:9});ws.getCell('I2').alignment={horizontal:'right'};
+  const rt=ws.getCell('J2');rt.value=S.rate;rt.numFmt='0.0000';rt.font=ft({bold:true,color:{argb:'FF0000FF'}});rt.fill=fillA('FFFFFF99');rt.border=bdr();
+  const hd=['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка'];
+  hd.forEach((v,i)=>{const x=ws.getCell(3,i+1);x.value=v;x.font=ft({bold:true,color:{argb:'FFFFFFFF'}});x.fill=fillA(NAVY);x.border=bdr(NAVY);x.alignment={horizontal:'center',vertical:'middle',wrapText:true}});
+  ws.getRow(3).height=32;
+  let r=4;const first=r;
+  rows.forEach(x=>{
+    const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
+    const set=(col,v,fmt,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fmt)c.numFmt=fmt;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
+    set('A',it.no,null,null,'center');set('B',(it.name+(it.params?', '+it.params:''))+(o?'  [поставщик: '+o.supplier+']':''),null,null,'left');set('C',x.q,'0.##',null,'center');
+    if(x.ch){
+      if(cur==='PLN'){set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',{formula:`F${r}/$J$2`,result:x.cost},'#,##0.00','FFFCE4E4')}
+      else if(cur==='EUR'){set('F',0,'#,##0.00','FFFCE4E4');set('G',r2(x.ch.cur*100)/100,'#,##0.00','FFFCE4E4')}
+      else{set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',r2(x.cost*100)/100,'#,##0.00','FFFCE4E4')}
+      set('I',x.markup,'0.00');ws.getCell('I'+r).font=ft({color:{argb:'FF0000FF'}});ws.getCell('I'+r).fill=fillA('FFFFFF99');
+      set('D',{formula:`ROUND(G${r}*I${r},2)`,result:x.sale},'#,##0.00','FFE2F0D9');set('E',{formula:`D${r}*C${r}`,result:x.saleT},'#,##0.00','FFE2F0D9');set('H',{formula:`G${r}*C${r}`,result:x.costT},'#,##0.00','FFFCE4E4');
+      ws.getCell('E'+r).font=ft({bold:true});
+    }else{set('D','нет цены');ws.getCell('D'+r).font=ft({italic:true,color:{argb:'FFA62B2B'}})}
+    ws.getRow(r).height=Math.max(22,14*linesEst(ws.getCell('B'+r).value,76)+6);r++});
+  const last=r-1;
+  ws.getCell('B'+r).value='ИТОГО';ws.getCell('E'+r).value={formula:`SUM(E${first}:E${last})`,result:totals().sale};ws.getCell('H'+r).value={formula:`SUM(H${first}:H${last})`,result:totals().cost};
+  for(let k=1;k<=10;k++){const c=ws.getCell(r,k);c.font=ft({bold:true,size:11});c.fill=fillA(TOTAL);c.border={top:{style:'medium',color:{argb:NAVY}},bottom:{style:'medium',color:{argb:NAVY}}};if(k===5||k===8)c.numFmt='#,##0.00'}
+  ws.getCell('B'+r).alignment={horizontal:'right'};
+  const t=totals();r+=2;
+  [['Маржа, EUR',{formula:`E${r-2}-H${r-2}`,result:t.margin},'#,##0.00'],['Маржа от цены клиенту',{formula:`IF(E${r-2}=0,0,(E${r-2}-H${r-2})/E${r-2})`,result:t.pct/100},'0.0%']].forEach(([k,v,fm],i)=>{const a=ws.getCell('B'+(r+i));a.value=k;a.font=ft({bold:true});a.alignment={horizontal:'right'};const b=ws.getCell('E'+(r+i));b.value=v;b.numFmt=fm;b.font=ft({bold:true});b.border=bdr()});
+  const buf=await wb.xlsx.writeBuffer();
+  return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+const xlsxSafe=async(pretty,plain)=>{try{return await pretty()}catch(e){console.warn('ExcelJS недоступен, простой файл',e);toast('Без интернета файл сохранён в простом виде: библиотека оформления не загрузилась');return plain()}};
+
 function cliText(){
   const L=Lc(),c=S.client,rows=cliRows(),cu=saleCur();
   return [L.title+(c.number?' № '+c.number:'')+' ('+c.date+')',c.name?L.to+': '+c.name:'','',...rows.map(x=>`${x.no}. ${x.desc} — ${x.qty==null?'':x.qty+' '}${x.unit||L.pcs} × ${x.price==null?L.onreq:fmt(x.price)+' '+cu}${x.sum!=null?' = '+fmt(x.sum)+' '+cu:''}`),'',L.total+': '+fmt(cliTotal(rows))+' '+cu,L.vat,...[c.validity&&L.validity+': '+c.validity,c.delivery&&L.delivery+': '+c.delivery,c.payment&&L.payment+': '+c.payment,c.incoterms&&L.incoterms+': '+c.incoterms].filter(Boolean),...(S.client.codes!==false?codeBlocks().flatMap(b=>b.lines.filter(l=>l.equip.some(codeTxt)).flatMap(l=>['','Поз. '+b.no+(l.code?' — '+l.code:''),...l.equip.filter(codeTxt).map(e=>e.code+' — '+codeTxt(e))])):[])].filter(x=>x!==undefined&&x!==false&&x!==null).join('\n');
@@ -826,8 +981,10 @@ function checks(){
     else if(o.basis==='unknown')add('ask','—','НДС',`Оферта «${o.supplier}»: не указано, нетто или брутто.`);
     if(fxOf(o)==null)add('crit','—','Валюта',`Оферта «${o.supplier}»: валюта «${o.currency||'не указана'}», курс к EUR не задан.`);
     if(!o.payment)add('ask','—','Оплата',`Оферта «${o.supplier}»: условия оплаты не указаны.`);
+    if(o.verify&&o.verify.diffs)o.verify.diffs.forEach(d=>add('crit',d.li>=0?String(o.lines[d.li]&&o.lines[d.li].item||'—'):'—','Сверка ИИ',`Оферта «${o.supplier}»: ${d.label}. ИИ 1: ${d.a}; ИИ 2: ${d.b}. Проверьте по документу.`));
     o.lines.filter(l=>!l.item).forEach(l=>add('ask','—','Строка не сопоставлена',`Оферта «${o.supplier}»: строка «${l.article||l.desc}» не привязана к позиции запроса.`));
   });
+  if(req.verify&&req.verify.diffs)req.verify.diffs.forEach(d=>add('crit','—','Сверка ИИ (запрос)',`${d.label}. ИИ 1: ${d.a}; ИИ 2: ${d.b}. Проверьте по запросу клиента.`));
   req.items.forEach(it=>{
     const cs=cands(it.no);
     if(!cs.length){add('crit',it.no,'Нет предложения',`Позиция «${it.name.slice(0,70)}»: ни одна оферта не содержит цену.`);return}
@@ -905,8 +1062,9 @@ function openSettings(){
   fillSettings();$('#sRes').textContent='';
   const d=$('#dlg');if(d.showModal)d.showModal();else d.setAttribute('open','')
 }
-function fillSettings(){const p=$('#sProv').value;$('#lKey').hidden=$('#lModel').hidden=p==='manual'||p==='sample';$('#sKey').value=CFG.keys[p]||'';$('#sModel').value=CFG.models[p]||'';$('#sModel').placeholder=DEF[p].model;$('#sHint').textContent=DEF[p].hint}
-function applySettings(){const p=$('#sProv').value;CFG.provider=p;CFG.keys[p]=$('#sKey').value.trim();const m=$('#sModel').value.trim();CFG.models[p]=m===DEF[p].model?'':m;const ok=saveCfg();renderAI();return ok}
+function fillVer(){const p=$('#sProv').value;const sel=$('#sVer');const opts=Object.keys(DEF).filter(k=>k!==p&&k!=='manual'&&(k!=='sample'||inClaude())&&(k==='sample'||keyOf(k)));sel.innerHTML='<option value="">Выключена</option>'+opts.map(k=>`<option value="${k}"${k===CFG.verify?' selected':''}>${DEF[k].short}</option>`).join('');sel.disabled=p==='manual'}
+function fillSettings(){fillVer();const p=$('#sProv').value;$('#lKey').hidden=$('#lModel').hidden=p==='manual'||p==='sample';$('#sKey').value=CFG.keys[p]||'';$('#sModel').value=CFG.models[p]||'';$('#sModel').placeholder=DEF[p].model;$('#sHint').textContent=DEF[p].hint}
+function applySettings(){const p=$('#sProv').value;CFG.provider=p;CFG.verify=$('#sVer').value&&$('#sVer').value!==p?$('#sVer').value:'';CFG.keys[p]=$('#sKey').value.trim();const m=$('#sModel').value.trim();CFG.models[p]=m===DEF[p].model?'':m;const ok=saveCfg();renderAI();return ok}
 function renderFolder(){const e=$('#fst');if(!e)return;e.textContent=dirH?(dirOK?'Папка: '+dirH.name:'Папка не подключена, нажмите «Папка проектов»'):'';e.style.color=dirH&&!dirOK?'var(--warn)':''}
 function renderHeader(){renderAI();renderFolder();
   $('#pname').value=S.name;
@@ -942,6 +1100,7 @@ function vReq(m){
   m.innerHTML=`
   <section class="card">
     <h2>Запрос клиента</h2>
+    ${has&&S.req.verify?(S.req.verify.note?`<p class="stale">${esc(S.req.verify.note)}</p>`:(S.req.verify.diffs.length?`<div class="warnbox"><b>Сверка двумя ИИ (${esc(S.req.verify.by)}): расхождений ${S.req.verify.diffs.length}.</b> Сверьте с оригиналом запроса:<ul style="margin:6px 0 0 18px">${S.req.verify.diffs.map(d=>`<li>${esc(d.label)}: ИИ 1 — <b>${esc(d.a)}</b>, ИИ 2 — <b>${esc(d.b)}</b></li>`).join('')}</ul></div>`:`<p class="hint" style="color:var(--ok)">Сверка двумя ИИ (${esc(S.req.verify.by)}): расхождений нет.</p>`)):''}
     <p class="sub">Загрузите запрос на русском или украинском (Word, Excel, PDF, скан или фото) или вставьте текст. Сканы и фото распознаются автоматически. Первый раз? Нажмите «Инструкция» вверху. ИИ выделит позиции, параметры и срок поставки. Результат можно править в таблице.</p>
     <div class="drop" id="drop1"><input type="file" id="f1" accept=".xlsx,.xls,.xlsm,.csv,.docx,.pdf,.txt,.jpg,.jpeg,.png,.webp,.gif,image/*" aria-label="Файл запроса"> <span class="hint">или перетащите файл сюда</span></div>
     <label class="f" style="margin-top:10px">Текст запроса<textarea id="reqText" placeholder="Вставьте текст запроса сюда">${esc(S.reqText)}</textarea></label>
@@ -1010,6 +1169,7 @@ function vOff(m){
       <label class="f">Incoterms<input type="text" data-of="incoterms" value="${esc(o.incoterms)}"></label>
     </div>
     ${o.notes?`<p class="hint">Примечания: ${esc(o.notes)}</p>`:''}
+    ${o.verify?(o.verify.note?`<p class="stale">${esc(o.verify.note)}</p>`:(o.verify.diffs.length?`<div class="warnbox"><b>Сверка двумя ИИ (${esc(o.verify.by)}): расхождений ${o.verify.diffs.length}.</b> Проверьте по документу.<table class="xt" style="margin-top:6px"><thead><tr><th>Что</th><th>ИИ 1 (в таблице)</th><th>ИИ 2</th><th></th></tr></thead><tbody>${o.verify.diffs.map((d,di)=>`<tr><td style="text-align:left">${esc(d.label)}</td><td class="num">${esc(d.a)}</td><td class="num">${esc(d.b)}</td><td>${['price','qty','currency','basis'].includes(d.field)?`<button class="btn sm" data-vap="${di}" type="button">Взять от ИИ 2</button>`:''}</td></tr>`).join('')}</tbody></table></div>`:`<p class="hint" style="color:var(--ok)">Сверка двумя ИИ (${esc(o.verify.by)}): расхождений нет.</p>`)):''}
     <div class="tw"><table><thead><tr><th>Позиция запроса</th><th>Артикул</th><th>Описание</th><th>Кол-во</th><th>Ед.</th><th>Цена ед. (${esc(o.currency||'?')})</th><th>Срок</th><th>Дн.</th><th>Опция</th><th></th></tr></thead><tbody>
     ${o.lines.map((l,li)=>`<tr data-l="${li}"><td><select data-lf="item">${itemOpts(l.item)}</select></td><td><input type="text" data-lf="article" value="${esc(l.article)}" style="min-width:110px"></td><td><textarea data-lf="desc">${esc(l.desc)}</textarea></td><td><input type="number" data-lf="qty" value="${l.qty==null?'':l.qty}" style="width:80px"></td><td><input type="text" data-lf="unit" value="${esc(l.unit)}" style="width:60px"></td><td><input type="number" step="0.01" data-lf="price" value="${l.price==null?'':l.price}" style="width:100px"></td><td><input type="text" data-lf="lead" value="${esc(l.lead)}" style="width:100px"></td><td><input type="number" data-lf="leadDays" value="${l.leadDays==null?'':l.leadDays}" style="width:64px"></td><td><input type="checkbox" data-lf="opt"${l.opt?' checked':''} aria-label="Опция, не входит в цену"></td><td><button class="btn sm danger" data-ldel="${li}" type="button" aria-label="Удалить строку">✕</button></td></tr>`).join('')}
     </tbody></table></div>
@@ -1035,6 +1195,11 @@ function vOff(m){
     d.querySelectorAll('[data-of]').forEach(inp=>inp.onchange=e=>{const k=e.target.dataset.of;o[k]=k==='fx'?num(e.target.value):(k==='currency'?e.target.value.trim().toUpperCase():e.target.value);S.ai=null;changed();renderAll()});
     d.querySelectorAll('tr[data-l] [data-lf]').forEach(inp=>inp.onchange=e=>{const l=o.lines[+e.target.closest('tr').dataset.l],k=e.target.dataset.lf;l[k]=k==='opt'?e.target.checked:(['qty','price','leadDays'].includes(k)?num(e.target.value):e.target.value);S.ai=null;changed();renderAll()});
     d.querySelectorAll('[data-ldel]').forEach(b=>b.onclick=()=>{o.lines.splice(+b.dataset.ldel,1);S.ai=null;changed();renderAll()});
+    d.querySelectorAll('[data-vap]').forEach(b=>b.onclick=()=>{const o=S.offers[+d.dataset.o],df=o.verify.diffs[+b.dataset.vap];
+      if(df.field==='price'||df.field==='qty'){const l=o.lines[df.li];if(l)l[df.field]=num(df.b)}
+      else if(df.field==='currency'){o.currency=String(df.b).toUpperCase()}
+      else if(df.field==='basis'){o.basis=df.b}
+      o.verify.diffs.splice(+b.dataset.vap,1);S.ai=null;changed();renderAll()});
     d.querySelector('[data-odel]').onclick=e=>{const i=+e.target.dataset.odel;if(delOffer===i){S.offers.splice(i,1);delOffer=-1;S.ai=null;changed()}else delOffer=i;renderAll()};
   });
 }
@@ -1083,7 +1248,7 @@ function vCalc(m){
   m.querySelectorAll('tr[data-no]').forEach(tr=>{const no=tr.dataset.no;
     tr.querySelector('[data-sup]').onchange=e=>{S.rows[no]=Object.assign(S.rows[no]||{},{offerId:e.target.value});S.client.auto=false;changed();renderAll()};
     tr.querySelector('[data-mk]').onchange=e=>{S.rows[no]=Object.assign(S.rows[no]||{},{markup:e.target.value===''?null:num(e.target.value)});changed();renderAll()}});
-  $('#xCalc').onclick=()=>saveFile(`kalkulator_${safeName(S.name)}.xlsx`,calcXlsx());
+  $('#xCalc').onclick=async()=>saveFile(`kalkulator_${safeName(S.name)}.xlsx`,await xlsxSafe(calcXlsxPretty,calcXlsx));
   $('#resetMk').onclick=()=>{Object.values(S.rows).forEach(r=>{r.markup=null});changed();renderAll()};
 }
 
@@ -1121,7 +1286,7 @@ function vCli(m){
   $('#cAuto').onclick=()=>{autofill(true);changed();renderAll()};
   if($('#cCodes'))$('#cCodes').onclick=()=>run('ИИ описывает коды привода',(s,p)=>genCodes(s,p));
   $('#cDesc').onclick=()=>run('ИИ готовит описания',(s,p)=>genDescs(s,p));
-  $('#xCli').onclick=()=>saveFile(`${S.clientLang==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}.xlsx`,cliXlsx());
+  $('#xCli').onclick=async()=>saveFile(`${S.clientLang==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}.xlsx`,await xlsxSafe(cliXlsxPretty,cliXlsx));
   $('#cCopy').onclick=()=>copyText(cliText());
 }
 
