@@ -154,6 +154,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
       <span class="save" id="savest"></span>
     </div>
     <nav class="rail" id="rail" aria-label="Этапы"></nav>
+    <div class="warnbox" id="lockbar" hidden role="status"></div>
     <div class="status" id="status" hidden role="status"><span class="spin"></span><span id="stxt" style="flex:1"></span><button class="btn sm" id="stop" type="button">Стоп</button></div>
   </header>
   <main id="main"></main>
@@ -243,7 +244,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   </ol>
 
   <h3>Передать проект коллеге</h3>
-  <p>Если у вас общая папка проектов, ничего делать не нужно: коллега видит те же проекты. Иначе «Экспорт» → отправить файл .json → коллега нажимает «Импорт».</p>
+  <p>Если у вас общая папка проектов, коллега видит те же проекты. <b>Защита от одновременной правки:</b> когда вы открываете проект, в папке появляется служебный файл «_lock_…». Если коллега открывает тот же проект, он видит жёлтую полосу «Проект сейчас открыт: имя» и его правки сохраняются только в его браузере, а не в общую папку, чтобы ничего не затереть. Когда вы закрыли проект, замок снимается сам (или через 2,5 минуты, если компьютер выключили). Кнопка «Проверить снова» перепроверяет замок, «Взять управление» снимает его вручную. Своё имя для замка укажите в «Настройках ИИ». Служебные файлы «_lock_…» не удаляйте вручную, пока проект открыт. Иначе «Экспорт» → отправить файл .json → коллега нажимает «Импорт».</p>
 
   <h3>Правила</h3>
   <ul>
@@ -278,6 +279,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   </details>
   <div class="row2"><button class="btn pri" id="sSave" type="button">Сохранить</button><button class="btn" id="sTest" type="button">Проверить связь</button><button class="btn" id="sClose" type="button">Закрыть</button></div>
   <p class="hint" id="sRes" role="status"></p>
+  <label class="f" style="margin-top:10px">Ваше имя (видно коллеге, если он откроет проект, который открыт у вас)<input type="text" id="sWho" placeholder="например: Артём"></label>
   <h3 style="margin-top:14px">Резервная копия</h3>
   <div class="row2"><button class="btn" id="sBackup" type="button">Скачать все проекты</button><span class="hint">Загрузить копию можно кнопкой «Импорт» в шапке.</span></div>
   <div class="warn">Ключи API оплачиваются отдельно от подписок ChatGPT, Claude и Gemini. Название модели можно менять: впишите актуальную модель сервиса.</div>
@@ -400,7 +402,54 @@ async function loadList(){
   const a=dirH&&dirOK?await dirList():await idbAll();
   projects=a.map(d=>({id:d.id,name:d.name||'Без названия',updated:d.updated||0})).sort((x,y)=>y.updated-x.updated);
 }
+
+/* ---------- блокировка проекта (мягкая): файл _lock_<id>.json в папке проектов ---------- */
+const LOCK_TTL=150000,LOCK_BEAT=45000,TAB_ID=Math.random().toString(36).slice(2,10);
+let lockId=null,lockT=null,ro=null;
+function whoName(){let w='';try{w=(localStorage.getItem('mva_who')||'').trim()}catch(e){}return w||('Пользователь '+TAB_ID.slice(0,4))}
+const lockName=id=>'_lock_'+id+'.json';
+async function lockRead(id){try{const fh=await dirH.getFileHandle(lockName(id));return JSON.parse(await (await fh.getFile()).text())}catch(e){return null}}
+async function lockWrite(id,since){const fh=await dirH.getFileHandle(lockName(id),{create:true}),w=await fh.createWritable();await w.write(JSON.stringify({tab:TAB_ID,who:whoName(),since:since||Date.now(),beat:Date.now()}));await w.close()}
+async function lockDrop(id){if(!(dirH&&dirOK&&id))return;try{const l=await lockRead(id);if(l&&l.tab===TAB_ID)await dirH.removeEntry(lockName(id))}catch(e){}}
+const lockFresh=l=>!!(l&&l.tab!==TAB_ID&&Date.now()-(l.beat||0)<LOCK_TTL);
+function renderLock(){
+  const el=$('#lockbar');if(!el)return;
+  if(!ro){el.hidden=true;el.innerHTML='';return}
+  const tm=ro.since?new Date(ro.since).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}):'';
+  el.hidden=false;
+  el.innerHTML=`<b>Проект сейчас открыт: ${esc(ro.by)}</b>${tm?' (с '+tm+')':''}. Чтобы не затереть правки коллеги, ваши изменения сохраняются только в этом браузере, а не в общую папку. <button class="btn sm" id="lkRetry" type="button">Проверить снова</button> <button class="btn sm" id="lkForce" type="button">Взять управление</button>`;
+  $('#lkRetry').onclick=async()=>{if(await lockTake(S.id,false)){toast('Проект свободен: вы можете работать');save()}else toast('Проект всё ещё открыт: '+(ro?ro.by:''))};
+  $('#lkForce').onclick=async()=>{if(!confirm('Коллега мог не закончить работу. Взять управление и сохранять вашу версию в папку?'))return;if(await lockTake(S.id,true)){toast('Вы взяли управление проектом');save()}}
+}
+function startBeat(){
+  clearInterval(lockT);
+  lockT=setInterval(async()=>{
+    if(!lockId)return;
+    try{const l=await lockRead(lockId);
+      if(lockFresh(l)){ro={by:l.who||'коллега',since:l.since||l.beat,id:lockId};lockId=null;clearInterval(lockT);renderLock();return}
+      await lockWrite(lockId,l&&l.tab===TAB_ID?l.since:Date.now())}catch(e){}
+  },LOCK_BEAT);
+}
+async function lockTake(id,force){
+  if(!(dirH&&dirOK&&id))return true;
+  try{
+    const l=await lockRead(id);
+    if(!force&&lockFresh(l)){ro={by:l.who||'коллега',since:l.since||l.beat,id};renderLock();return false}
+    await lockWrite(id,l&&l.tab===TAB_ID?l.since:Date.now());
+    if(!force){await new Promise(r=>setTimeout(r,700));const l2=await lockRead(id);if(lockFresh(l2)){ro={by:l2.who||'коллега',since:l2.since||l2.beat,id};renderLock();return false}}
+    ro=null;lockId=id;renderLock();startBeat();return true
+  }catch(e){return true}
+}
+async function ensureLock(id){
+  if(!(dirH&&dirOK&&id))return true;
+  if(lockId===id&&!ro)return true;
+  if(lockId&&lockId!==id)await releaseLock();
+  return lockTake(id,false);
+}
+async function releaseLock(){const id=lockId;lockId=null;ro=null;clearInterval(lockT);renderLock();if(id)await lockDrop(id)}
+window.addEventListener('pagehide',()=>{if(lockId)lockDrop(lockId)});
 async function folderSave(){
+  if(!await ensureLock(S.id)){setSave('открыто коллегой: сохранено только в браузере');return}
   if(!defName())folderName();
   let disk=null;try{disk=await dirRead(S.id)}catch(e){}
   if(disk&&(disk.updated||0)>(base[S.id]||0)&&disk.updated!==S.updated){
@@ -421,7 +470,7 @@ async function save(){
   try{
     if(idb){try{await idbPut(S)}catch(e){if(!(dirH&&dirOK))throw e}}
     if(dirH&&dirOK)await folderSave();
-    setSave(dirH&&dirOK?'сохранено в папку':'сохранено в браузере');await loadList();renderHeader();
+    setSave(dirH&&dirOK?(ro?'открыто коллегой: сохранено только в браузере':'сохранено в папку'):'сохранено в браузере');await loadList();renderHeader();
   }catch(e){setSave('не сохранено: '+((e&&e.name)==='QuotaExceededError'?'нет места':(e&&e.name==='NotAllowedError'?'нет доступа к папке':'ошибка')))}
 }
 async function openProject(id){
@@ -429,7 +478,7 @@ async function openProject(id){
     let d=null;
     if(dirH&&dirOK){try{d=await dirRead(id);base[id]=d.updated||0}catch(e){}}
     if(!d&&idb)d=await idbGet(id);
-    if(!d)return;S=Object.assign(blank(),d);tab='req';renderAll();
+    if(!d)return;await releaseLock();S=Object.assign(blank(),d);tab='req';renderAll();await ensureLock(S.id);
   }catch(e){toast('Не удалось открыть проект')}
 }
 async function removeProject(id){
@@ -2529,6 +2578,7 @@ $('#bHelp').onclick=openHelp;
 document.addEventListener('change',e=>{const t=e.target;if(t&&t.matches&&t.matches('select[data-actno]')){const no=t.getAttribute('data-actno');(S.rows[no]=S.rows[no]||{}).act=t.value;changed();renderAll()}});
 $('#iClose').onclick=()=>$('#idlg').close();
 $('#sProv').onchange=fillSettings;
+{const w=$('#sWho');if(w){try{w.value=localStorage.getItem('mva_who')||''}catch(e){}w.onchange=e=>{try{localStorage.setItem('mva_who',e.target.value.trim())}catch(x){}}}}
 $('#sManual').onclick=()=>{$('#sProv').value='manual';fillSettings();if(applySettings()){$('#dlg').close();toast('Включён ручной режим: ключ не нужен')}};
 $('#sClose').onclick=()=>$('#dlg').close();
 $('#sSave').onclick=()=>{if(applySettings()){$('#sRes').textContent='Сохранено';toast('Настройки ИИ сохранены')}};
