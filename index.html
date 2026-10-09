@@ -307,15 +307,44 @@ async function dirPerm(ask){
   try{if((await dirH.queryPermission(o))==='granted')return true;if(ask&&(await dirH.requestPermission(o))==='granted')return true}catch(e){}
   return false;
 }
-async function dirWrite(o){const fh=await dirH.getFileHandle(fileOf(o.id),{create:true});const w=await fh.createWritable();await w.write(JSON.stringify({app:'mva-zayavki',version:1,project:o}));await w.close()}
-async function dirRead(id){const fh=await dirH.getFileHandle(fileOf(id));return JSON.parse(await (await fh.getFile()).text()).project}
-async function dirList(){
-  const out=[];
+/* файл проекта лежит внутри папки проекта: <проект>/_mva_<id>.json; старые файлы в корне (mva_<id>.json) читаются и переносятся при сохранении */
+const fileIn=id=>'_mva_'+id+'.json';
+const FILE_IN_RE=/^_mva_[a-z0-9]{3,12}\.json$/;
+const loc={};
+async function tryFile(d,n){try{return await d.getFileHandle(n)}catch(e){return null}}
+async function dirFind(id){
+  if(loc[id]){try{const d=await dirH.getDirectoryHandle(loc[id]);const fh=await tryFile(d,fileIn(id));if(fh)return{fh,d,n:fileIn(id)}}catch(e){}}
+  const r=await tryFile(dirH,fileOf(id));if(r)return{fh:r,d:dirH,n:fileOf(id)};
   for await(const [name,hd] of dirH.entries()){
-    if(hd.kind!=='file'||!FILE_RE.test(name))continue;
-    try{const j=JSON.parse(await (await hd.getFile()).text());const q=j.project;if(q&&q.id&&Array.isArray(q.offers))out.push({id:q.id,name:q.name||'Без названия',updated:q.updated||0})}catch(e){}
+    if(hd.kind!=='directory')continue;
+    const fh=await tryFile(hd,fileIn(id));if(fh){loc[id]=name;return{fh,d:hd,n:fileIn(id)}}
   }
-  return out;
+  return null;
+}
+async function dirWrite(o){
+  let d=dirH,n=fileOf(o.id);
+  if(o.folder){d=await dirH.getDirectoryHandle(o.folder,{create:true});n=fileIn(o.id)}
+  const fh=await d.getFileHandle(n,{create:true});const w=await fh.createWritable();await w.write(JSON.stringify({app:'mva-zayavki',version:1,project:o}));await w.close();
+  if(o.folder){loc[o.id]=o.folder;try{await dirH.removeEntry(fileOf(o.id))}catch(e){}}
+}
+async function dirRead(id){const f=await dirFind(id);if(!f)throw new Error('нет файла');return JSON.parse(await (await f.fh.getFile()).text()).project}
+async function dirList(){
+  const out=new Map();
+  const add=(q,where)=>{if(q&&q.id&&Array.isArray(q.offers)){const p=out.get(q.id);if(!p||(q.updated||0)>=(p.updated||0)){out.set(q.id,{id:q.id,name:q.name||'Без названия',updated:q.updated||0});loc[q.id]=where}}};
+  for await(const [name,hd] of dirH.entries()){
+    try{
+      if(hd.kind==='file'){
+        if(!FILE_RE.test(name))continue;
+        add(JSON.parse(await (await hd.getFile()).text()).project,'');
+      }else if(hd.kind==='directory'){
+        for await(const [n2,h2] of hd.entries()){
+          if(h2.kind!=='file'||!FILE_IN_RE.test(n2))continue;
+          try{add(JSON.parse(await (await h2.getFile()).text()).project,name)}catch(e){}
+        }
+      }
+    }catch(e){}
+  }
+  return [...out.values()];
 }
 async function initStore(){
   try{idb=await openDB()}catch(e){idb=null}
@@ -341,6 +370,7 @@ async function loadList(){
   projects=a.map(d=>({id:d.id,name:d.name||'Без названия',updated:d.updated||0})).sort((x,y)=>y.updated-x.updated);
 }
 async function folderSave(){
+  if(!defName())folderName();
   let disk=null;try{disk=await dirRead(S.id)}catch(e){}
   if(disk&&(disk.updated||0)>(base[S.id]||0)&&disk.updated!==S.updated){
     const cp=Object.assign({},S,{id:uid(),name:S.name+' (копия '+new Date().toLocaleString('ru-RU')+')'});
@@ -373,7 +403,11 @@ async function openProject(id){
 }
 async function removeProject(id){
   if(idb){try{await idbDel(id)}catch(e){}}
-  if(dirH&&dirOK){try{await dirH.removeEntry(fileOf(id))}catch(e){}}
+  if(dirH&&dirOK){
+    try{const f=await dirFind(id);if(f)await f.d.removeEntry(f.n)}catch(e){}
+    try{await dirH.removeEntry(fileOf(id))}catch(e){}
+    delete loc[id];
+  }
 }
 function setSave(t){const e=$('#savest');if(e)e.textContent=t}
 /* файл проекта: обмен между коллегами */
