@@ -1817,6 +1817,7 @@ function vCalc(m){
   <section class="card">
     <h2>Калькулятор</h2>
     ${langSeg()}
+    ${descHint()}
     ${trBox()}
     ${validBox()}${gapBox()}
     <p class="sub">Цена поставщика пересчитывается в EUR по курсу, затем умножается на наценку. По умолчанию выбран самый дешёвый поставщик по каждой позиции.</p>
@@ -1872,6 +1873,7 @@ function vCalc(m){
     S.client.auto=false;S.ai=null;changed();renderAll();toast(n?'Комплектов собрано: '+n:'Нет позиций, где есть цены в обеих офертах (проверьте привязку строк на вкладке «Предложения»)')};
    const ai2=$('#cbAi');if(ai2)ai2.onclick=()=>{const A=$('#cbA').value,B=$('#cbB').value,P=$('#cbPos').value;run('ИИ привязывает приводы',(s,p)=>mapActuators(B,A,P,s,p))};
    const cl=$('#cbClr');if(cl)cl.onclick=()=>{Object.values(S.rows).forEach(r=>{if(r)delete r.add});S.client.auto=false;S.ai=null;changed();renderAll()}}
+  {const b=$('#cTrOff');if(b)b.onclick=()=>run('ИИ переводит описания оферт',(s,p)=>fillOfferTr(s,p))}
   $('#xCalc').onclick=async()=>saveFile(`${calcFileBase()}.xlsx`,await xlsxSafe(calcXlsxPretty,calcXlsx),'calc');
   $('#pCalc').onclick=()=>exportDoc('pdf',docCalc(),calcFileBase(),'calc');$('#wCalc').onclick=()=>exportDoc('docx',docCalc(),calcFileBase(),'calc');
   $('#resetMk').onclick=()=>{Object.values(S.rows).forEach(r=>{r.markup=null;r.qty=null});changed();renderAll()};
