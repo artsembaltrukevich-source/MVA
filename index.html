@@ -578,6 +578,7 @@ items: ${JSON.stringify(src)}`;
   S.req.items.forEach(i=>{const x=by[i.no];if(!x)return;if(i.o_name==null){i.o_name=i.name;i.o_params=i.params||'';i.o_unit=i.unit||''}
     i.name=String(x.name||i.o_name);i.params=String(x.params!=null?x.params:i.o_params);i.unit=String(x.unit||i.o_unit);i.t_doubt=String(x.doubt||'')});
   S.req.trLang=lang;S.clientLang=lang;if(S.req.srcLang==null)S.req.srcLang=S.req.fromOffer?'other':(lang==='uk'?'ru':'uk');
+  S.req.pack=S.req.pack||{};S.req.pack[lang]=snapItems();{const sl=S.req.srcLang;if(sl==='ru'||sl==='uk')S.req.pack[sl]=S.req.items.map(i=>({no:i.no,name:i.o_name!=null?i.o_name:i.name,params:i.o_params!=null?i.o_params:(i.params||''),unit:i.o_unit!=null?i.o_unit:(i.unit||'')}))}
 }
 /* контроль: пропущенные номера, срок действия оферт, наценка по группам */
 function numGaps(){
@@ -643,6 +644,7 @@ function setLang(l){
   if(q&&q.items&&q.items.length){
     if(q.srcLang==null)q.srcLang=q.fromOffer?'other':prev;
     if(l===q.srcLang){if(q.items.some(i=>i.o_name!=null)){restoreItems();dropAiDescs()}changed();renderAll();return}
+    if(q.trLang!==l&&q.pack&&q.pack[l]){putItems(q.pack[l]);q.trLang=l;dropAiDescs();changed();renderAll();return}
     if(q.trLang!==l){dropAiDescs();run('ИИ переводит позиции на '+(l==='uk'?'украинский':'русский'),(s,p)=>translateItems(l,s,p));return}
   }
   changed();renderAll();
@@ -1067,20 +1069,21 @@ const CL={
 const fromTxt=()=>S.client.fromOn&&S.client.from?String(S.client.from).trim():'';
 const defDesc=it=>it.name+(it.params?', '+it.params:'');
 const lineDesc=l=>(S.clientLang==='uk'?l.dUk:l.dRu)||l.desc||'';
-const lineTr=l=>!!(S.clientLang==='uk'?l.dUk:l.dRu);
+const lineTrL=(l,g)=>!!(g==='uk'?l.dUk:l.dRu);
+const lineTr=l=>lineTrL(l,S.clientLang);
 const offeredText=r=>r&&r.ch?r.ch.lines.map(l=>[l.article,lineDesc(l)].filter(Boolean).join(' — ')).filter(Boolean).join(' + '):'';
-const offTrMissing=()=>{const a=[];S.offers.forEach(o=>o.lines.forEach(l=>{if(l.desc&&!l.opt&&!lineTr(l))a.push(l)}));return a};
-async function fillOfferTr(signal,prog){
-  const ls=offTrMissing();if(!ls.length)return;
+const offTrMissing=(g)=>{g=g||S.clientLang;const a=[];S.offers.forEach(o=>o.lines.forEach(l=>{if(l.desc&&!l.opt&&!lineTrL(l,g))a.push(l)}));return a};
+async function fillOfferTr(signal,prog,lang){
+  lang=lang||S.clientLang;const ls=offTrMissing(lang);if(!ls.length)return;
   for(let i=0;i<ls.length;i+=15){
     const ch=ls.slice(i,i+15);if(prog)prog('описания '+(i+1)+'–'+Math.min(i+15,ls.length)+' из '+ls.length);
-    const p=`Переведи описания позиций предложения поставщика (польский, английский, немецкий) на ${S.clientLang==='uk'?'украинский':'русский'} язык для коммерческого предложения клиенту.
+    const p=`Переведи описания позиций предложения поставщика (польский, английский, немецкий) на ${lang==='uk'?'украинский':'русский'} язык для коммерческого предложения клиенту.
 Верни только JSON: {"items":[{"id":string,"t":string}]}
 Правила: перевод ПОЛНЫЙ и технически точный, без сокращений, пропусков и обобщений, каждая характеристика; профессиональная терминология промышленной арматуры, приводов и КИПиА; артикулы, модели, обозначения (DN, PN, EN, ISO, ATEX, RAL, SOFT, FIRE SAFE и т.п.), числа и единицы оставляй без изменений.
 ДАННЫЕ: ${JSON.stringify(ch.map(l=>({id:l.id,text:l.desc})))}`;
     const r=await ai(p,signal,prog);
     if(!r||!Array.isArray(r.items))throw{message:'Перевод описаний не получен'};
-    r.items.forEach(x=>{const l=ch.find(y=>y.id===String(x.id));if(l&&x.t){if(S.clientLang==='uk')l.dUk=String(x.t);else l.dRu=String(x.t)}});
+    r.items.forEach(x=>{const l=ch.find(y=>y.id===String(x.id));if(l&&x.t){if(lang==='uk')l.dUk=String(x.t);else l.dRu=String(x.t)}});
   }
 }
 function makerNames(){
@@ -1390,6 +1393,50 @@ async function exportDoc(kind,model,name,sub){
   catch(e){console.error(e);toast('Не удалось создать файл. Для PDF и Word нужен интернет при первом скачивании. '+(e&&e.message||''))}
 }
 
+
+/* ---------- файлы на RU и UK: перевод хранится по языкам ---------- */
+const LNAME=l=>l==='uk'?'UK':'RU';
+const cliName=l=>`${l==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}_${LNAME(l)}`;
+const calcName=l=>`${calcFileBase()}_${LNAME(l)}`;
+const snapItems=()=>S.req.items.map(i=>({no:i.no,name:i.name,params:i.params||'',unit:i.unit||''}));
+const putItems=pk=>{S.req.items.forEach(i=>{const x=pk.find(y=>String(y.no)===String(i.no));if(x){i.name=x.name;i.params=x.params;i.unit=x.unit}})};
+function getPack(l){
+  const q=S.req;if(!q)return null;
+  if(q.pack&&q.pack[l])return q.pack[l];
+  const src=q.srcLang||(q.items.some(i=>i.o_name!=null)?null:S.clientLang);
+  if(l===src)return q.items.map(i=>({no:i.no,name:i.o_name!=null?i.o_name:i.name,params:i.o_params!=null?i.o_params:(i.params||''),unit:i.o_unit!=null?i.o_unit:(i.unit||'')}));
+  return null;
+}
+async function withLang(l,fn){
+  const pl=S.clientLang,keep=snapItems(),rows=S.rows,pk=getPack(l);
+  S.rows=JSON.parse(JSON.stringify(rows));Object.keys(S.rows).forEach(k=>{const r=S.rows[k];if(r&&r.descAi){delete r.desc;delete r.descAi}});
+  S.clientLang=l;if(pk)putItems(pk);
+  try{return await fn()}finally{S.clientLang=pl;putItems(keep);S.rows=rows}
+}
+async function ensureLang(l,signal,prog){
+  if(!getPack(l)){
+    const pl=S.clientLang,pt=S.req.trLang,keep=snapItems();
+    await translateItems(l,signal,prog);
+    S.clientLang=pl;putItems(keep);if(pt===undefined)delete S.req.trLang;else S.req.trLang=pt;
+  }
+  if(offTrMissing(l).length)await fillOfferTr(signal,prog,l);
+}
+async function saveKit(langs,signal,prog){
+  for(const l of langs){
+    if(prog)prog(LNAME(l)+': перевод');
+    await ensureLang(l,signal,prog);
+    if(prog)prog(LNAME(l)+': файлы');
+    await withLang(l,async()=>{
+      await saveFile(calcName(l)+'.xlsx',await xlsxSafe(calcXlsxPretty,calcXlsx),'calc');
+      await saveFile(cliName(l)+'.xlsx',await xlsxSafe(cliXlsxPretty,cliXlsx),'cli');
+      await exportDoc('pdf',docOffer(),cliName(l),'cli');
+      await exportDoc('docx',docOffer(),cliName(l),'cli');
+    });
+  }
+  toast('Файлы сохранены: '+langs.map(LNAME).join(' + '));
+}
+const kitRow=()=>`<div class="row2" style="margin-top:8px"><b>Файлы по языкам:</b><button class="btn" data-kit="ru" type="button">Комплект RU</button><button class="btn" data-kit="uk" type="button">Комплект UK</button><button class="btn pri" data-kit="both" type="button">Оба языка</button><span class="hint">Комплект = калькулятор .xlsx + предложение .xlsx, PDF, Word, с суффиксом _RU / _UK в имени. Недостающий перевод подготовит ИИ.</span></div>`;
+function bindKit(m){m.querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>{if(!S.req||!S.offers.length){toast('Нужны запрос и предложение');return}if(!leakOK())return;const v=b.dataset.kit;run('Готовлю файлы',(s,p)=>saveKit(v==='both'?['ru','uk']:[v],s,p))})}
 
 /* ---------- отчёт для клиента: соответствие запросу ---------- */
 const CD={
@@ -1849,6 +1896,7 @@ function vCalc(m){
     <td class="num cl">${fmt(r.sale)}</td><td class="num cl">${fmt(r.saleT)}</td><td class="num">${r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'}</td></tr>${compRows(r)}`}).join('')}
     </tbody><tfoot><tr><td colspan="8">Итого</td><td class="num">${fmt(t.sale)}</td><td class="num">${fmt(t.pct,1)}</td></tr></tfoot></table></div>
     <div class="row2"><button class="btn pri" id="xCalc" type="button">Скачать калькулятор .xlsx</button><button class="btn" id="pCalc" type="button">PDF</button><button class="btn" id="wCalc" type="button">Word</button><button class="btn" id="resetMk" type="button">Сбросить наценки и количества</button><span class="hint">Файл содержит маржу и курс. Клиенту его не отправляйте, для этого есть вкладка «Оферта клиенту».</span></div>
+    ${kitRow()}
   </section>`;
   $('#rate').onchange=e=>{S.rate=num(e.target.value)||S.rate;S.fxAuto=false;changed();renderAll()};
   $('#fxAuto').onchange=e=>{S.fxAuto=e.target.value==='1';changed();if(S.fxAuto){nbpDay=today();loadNbp().then(()=>{S.ai=null;changed();renderAll();toast('Курс обновлён на сегодня')}).catch(()=>toast('Не удалось загрузить курс НБП'))}else renderAll()};
@@ -1874,8 +1922,9 @@ function vCalc(m){
    const ai2=$('#cbAi');if(ai2)ai2.onclick=()=>{const A=$('#cbA').value,B=$('#cbB').value,P=$('#cbPos').value;run('ИИ привязывает приводы',(s,p)=>mapActuators(B,A,P,s,p))};
    const cl=$('#cbClr');if(cl)cl.onclick=()=>{Object.values(S.rows).forEach(r=>{if(r)delete r.add});S.client.auto=false;S.ai=null;changed();renderAll()}}
   {const b=$('#cTrOff');if(b)b.onclick=()=>run('ИИ переводит описания оферт',(s,p)=>fillOfferTr(s,p))}
-  $('#xCalc').onclick=async()=>saveFile(`${calcFileBase()}.xlsx`,await xlsxSafe(calcXlsxPretty,calcXlsx),'calc');
-  $('#pCalc').onclick=()=>exportDoc('pdf',docCalc(),calcFileBase(),'calc');$('#wCalc').onclick=()=>exportDoc('docx',docCalc(),calcFileBase(),'calc');
+  bindKit(m);
+  $('#xCalc').onclick=async()=>saveFile(`${calcName(S.clientLang)}.xlsx`,await xlsxSafe(calcXlsxPretty,calcXlsx),'calc');
+  $('#pCalc').onclick=()=>exportDoc('pdf',docCalc(),calcName(S.clientLang),'calc');$('#wCalc').onclick=()=>exportDoc('docx',docCalc(),calcName(S.clientLang),'calc');
   $('#resetMk').onclick=()=>{Object.values(S.rows).forEach(r=>{r.markup=null;r.qty=null});changed();renderAll()};
 }
 
@@ -2143,6 +2192,7 @@ function vCli(m){
     ${S.client.codes!==false?codeBlocks().map(b=>b.lines.filter(l=>l.equip.some(codeTxt)).map(l=>`<details class="offer" open><summary>Поз. ${esc(b.no)}: полное описание по кодам <span class="mono">${esc(l.code)}</span></summary><div class="tw"><table><thead><tr><th>Код</th><th>${S.clientLang==='uk'?'Розшифровка':'Расшифровка'}</th></tr></thead><tbody>${l.equip.filter(codeTxt).map(e=>`<tr><td class="mono">${esc(e.code)}</td><td>${esc(codeTxt(e))}</td></tr>`).join('')}</tbody></table></div></details>`).join('')).join(''):''}
     ${t.miss?`<p class="stale">Позиций без цены: ${t.miss}. В предложении у них будет «${L.onreq}».</p>`:''}
     <div class="row2"><button class="btn pri" id="xCli" type="button">Скачать предложение .xlsx</button><button class="btn" id="pCli" type="button">PDF</button><button class="btn" id="wCli" type="button">Word</button><button class="btn" id="cCopy" type="button">Копировать текстом</button></div>
+    ${kitRow()}
   </section>
   <section class="card">
     <h2>${(CD[S.clientLang]||CD.ru).title}</h2>
@@ -2156,7 +2206,7 @@ function vCli(m){
   bind('#cName','name');bind('#cNum','number');bind('#cDate','date');bind('#cVal','validity');bind('#cDel','delivery');bind('#cPay','payment');bind('#cInc','incoterms');
   m.querySelectorAll('tr[data-no] [data-desc]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.no;S.rows[no]=Object.assign(S.rows[no]||{},{desc:e.target.value,descAi:false});changed()});
   m.querySelectorAll('tr[data-dno] [data-cnote]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.dno;S.rows[no]=Object.assign(S.rows[no]||{},{cnote:e.target.value});changed()});
-  {const nm=`${S.clientLang==='uk'?'rozbizhnosti':'otkloneniya'}_${safeName(S.name)}`;$('#pDev').onclick=()=>exportDoc('pdf',docClientDev(),nm,'cli');$('#wDev').onclick=()=>exportDoc('docx',docClientDev(),nm,'cli');$('#rDev').onclick=()=>{Object.values(S.rows).forEach(r=>{r.cnote=null});changed();renderAll()}}
+  {const nm=`${S.clientLang==='uk'?'rozbizhnosti':'otkloneniya'}_${safeName(S.name)}_${LNAME(S.clientLang)}`;$('#pDev').onclick=()=>exportDoc('pdf',docClientDev(),nm,'cli');$('#wDev').onclick=()=>exportDoc('docx',docClientDev(),nm,'cli');$('#rDev').onclick=()=>{Object.values(S.rows).forEach(r=>{r.cnote=null});changed();renderAll()}}
   $('#cAuto').onclick=()=>{autofill(true);changed();renderAll()};
   $('#otSave').onclick=()=>{const T={validity:$('#otVal').value.trim(),payment:$('#otPay').value.trim(),incoterms:$('#otInc').value.trim()};try{localStorage.setItem('mva_terms',JSON.stringify(T))}catch(e){toast('Не удалось сохранить в браузере')}saveSharedTerms(T);autofill(true);changed();renderAll();toast('Условия сохранены')};
   $('#cHide').onchange=e=>{S.client.hideMaker=e.target.checked;if(e.target.checked&&!S.client.hideNames)S.client.hideNames=makerNames().join(', ');changed();renderAll()};
@@ -2169,9 +2219,10 @@ function vCli(m){
    const sa=$('#verA'),sb=$('#verB');if(sa)sa.onchange=e=>{verA=e.target.value;renderAll()};if(sb)sb.onchange=e=>{verB=e.target.value;renderAll()};
    const nmv=`versii_${safeName(S.name)}`;
    const pv=$('#pVer');if(pv){pv.onclick=()=>exportDoc('pdf',docVerDiff(verGet(verA),verGet(verB)),nmv,'cli');$('#wVer').onclick=()=>exportDoc('docx',docVerDiff(verGet(verA),verGet(verB)),nmv,'cli')}}
-  $('#xCli').onclick=async()=>leakOK()&&saveFile(`${S.clientLang==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}.xlsx`,await xlsxSafe(cliXlsxPretty,cliXlsx),'cli');
-  {const nm=`${S.clientLang==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}`;$('#pCli').onclick=()=>leakOK()&&exportDoc('pdf',docOffer(),nm,'cli');$('#wCli').onclick=()=>leakOK()&&exportDoc('docx',docOffer(),nm,'cli')}
+  $('#xCli').onclick=async()=>leakOK()&&saveFile(`${cliName(S.clientLang)}.xlsx`,await xlsxSafe(cliXlsxPretty,cliXlsx),'cli');
+  {const nm=cliName(S.clientLang);$('#pCli').onclick=()=>leakOK()&&exportDoc('pdf',docOffer(),nm,'cli');$('#wCli').onclick=()=>leakOK()&&exportDoc('docx',docOffer(),nm,'cli')}
   $('#cCopy').onclick=()=>copyText(cliText());
+  bindKit(m);
 }
 
 const SEVL={crit:'Критично',ask:'Уточнить',info:'Информация'};
