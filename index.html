@@ -643,9 +643,9 @@ function setLang(l){
   const prev=S.clientLang,q=S.req;S.clientLang=l;
   if(q&&q.items&&q.items.length){
     if(q.srcLang==null)q.srcLang=q.fromOffer?'other':prev;
-    if(l===q.srcLang){if(q.items.some(i=>i.o_name!=null)){restoreItems();dropAiDescs()}changed();renderAll();return}
-    if(q.trLang!==l&&q.pack&&q.pack[l]){putItems(q.pack[l]);q.trLang=l;dropAiDescs();changed();renderAll();return}
-    if(q.trLang!==l){dropAiDescs();run('ИИ переводит позиции на '+(l==='uk'?'украинский':'русский'),(s,p)=>translateItems(l,s,p));return}
+    if(l===q.srcLang){if(q.items.some(i=>i.o_name!=null)){restoreItems();dropAiDescs()}afterLang(l);return}
+    if(q.trLang!==l&&q.pack&&q.pack[l]){putItems(q.pack[l]);q.trLang=l;dropAiDescs();afterLang(l);return}
+    if(q.trLang!==l){dropAiDescs();run('ИИ переводит позиции на '+(l==='uk'?'украинский':'русский'),async(s,p)=>{await translateItems(l,s,p);await fillOfferTr(s,p,l)});return}
   }
   changed();renderAll();
 }
@@ -954,11 +954,12 @@ function supMeta(r){
   return chParts(r.ch).map(p=>{const ld=p.lines.map(l=>l.leadDays).filter(x=>x!=null),lt=ld.length?Math.max(...ld)+' дн.':(p.lines.map(l=>l.lead).filter(Boolean)[0]||'');
     return`<div class="hint">${esc([p.o.number?'оферта №'+p.o.number:'',_arts(p),lt].filter(Boolean).join(' · '))}</div>`}).join('');
 }
-const partKind=p=>hasAct(p.lines)?'Привод':'Арматура';
+const partKind=p=>hasAct(p.lines)?(S.clientLang==='uk'?'Привід':'Привод'):'Арматура';
+const CLX=()=>S.clientLang==='uk'?{hd:['№','Опис','К-сть','Ціна од. EUR','Сума EUR','Ціна пост.','Ціна пост. EUR','Собівартість EUR','Націнка'],tot:'РАЗОМ',nop:'немає ціни',mg:'Маржа, EUR',mgp:'Маржа від ціни клієнту',sup:'Постачальник',of:'пропозиція №'}:{hd:['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка'],tot:'ИТОГО',nop:'нет цены',mg:'Маржа, EUR',mgp:'Маржа от цены клиенту',sup:'Поставщик',of:'оферта №'};
 const partLabel=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+': '+(supOn()?(p.o.supplier||'')+(a?' — ':''):'')+a+' ('+(p.o.currency||'')+')'};
 const partLabelX=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+(a?': '+a:'')+' ('+(p.o.currency||'')+')'};
 const calcSups=()=>{const m=new Map();S.req.items.forEach(it=>{const r=rowInfo(it);chParts(r.ch).forEach(p=>m.set(p.o.id,p.o))});return[...m.values()]};
-const calcTitle=()=>{const u=calcSups();return S.name+(u.length?'  ·  Поставщик: '+u.map(o=>(o.supplier||'')+(o.number?' (оферта №'+o.number+')':'')).join('; '):'')};
+const calcTitle=()=>{const u=calcSups(),X=CLX();return S.name+(u.length?'  ·  '+X.sup+': '+u.map(o=>(o.supplier||'')+(o.number?' ('+X.of+o.number+')':'')).join('; '):'')};
 const calcDescMap=()=>{const m={};cliRows().forEach(x=>{m[x.no]=x.desc});return m};
 const calcFileBase=()=>{const u=calcSups().map(o=>String(o.supplier||'').trim().split(/[\s,.]+/)[0]).filter(x=>x.length>=2),base=safeName(S.name),add=[...new Set(u)].filter(n=>!base.toLowerCase().includes(safeName(n).toLowerCase()));return 'kalkulator_'+base+(add.length?'_'+add.map(safeName).join('_'):'')};
 const docSubs=r=>r.ch&&r.ch.comp?r.ch.parts.map(p=>['','   ↳ '+partLabelX(p),'',fmt(p.cur)+' '+(p.o.currency||''),fmt(p.eur),'','','','']):[];
@@ -1036,7 +1037,7 @@ function totals(){
 }
 function calcXlsx(){
   const rows=S.req.items.map(rowInfo),CD=calcDescMap();
-  const A=[['Kalkulator ofertowy MVA'],[calcTitle(),'','','','','','','','','Курс PLN/EUR'],['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка',S.rate]];
+  const A=[['Kalkulator ofertowy MVA'],[calcTitle(),'','','','','','','','','Курс PLN/EUR'],[...CLX().hd,S.rate]];
   const ws=XLSX.utils.aoa_to_sheet(A);
   let r=4;const first=r;
   rows.forEach(x=>{
@@ -1049,14 +1050,14 @@ function calcXlsx(){
       else if(cur==='EUR'){ws['F'+r]={t:'n',v:0};ws['G'+r]={t:'n',v:r2(x.ch.cur*100)/100}}
       else{ws['F'+r]={t:'n',v:x.ch.cur};ws['G'+r]={t:'n',v:r2(x.cost*100)/100}}
       ws['I'+r]={t:'n',v:x.markup};ws['D'+r]={t:'n',f:`ROUND(G${r}*I${r},2)`};ws['E'+r]={t:'n',f:`D${r}*C${r}`};ws['H'+r]={t:'n',f:`G${r}*C${r}`};
-    }else{ws['D'+r]={t:'s',v:'нет цены'}}
+    }else{ws['D'+r]={t:'s',v:CLX().nop}}
     r++;
     if(x.ch&&x.ch.comp)x.ch.parts.forEach(p=>{const c2=p.o.currency||'';
       ws['B'+r]={t:'s',v:'     ↳ '+partLabelX(p)};ws['F'+r]={t:'n',v:p.cur};
       ws['G'+r]=c2==='PLN'?{t:'n',f:`F${r}/$J$3`}:c2==='EUR'?{t:'n',f:`F${r}`}:{t:'n',v:Math.round(p.eur*100)/100};r++});
   });
   const last=r-1;
-  ws['B'+r]={t:'s',v:'ИТОГО'};ws['E'+r]={t:'n',f:`SUM(E${first}:E${last})`};ws['H'+r]={t:'n',f:`SUM(H${first}:H${last})`};
+  ws['B'+r]={t:'s',v:CLX().tot};ws['E'+r]={t:'n',f:`SUM(E${first}:E${last})`};ws['H'+r]={t:'n',f:`SUM(H${first}:H${last})`};
   ws['!ref']=`A1:J${r}`;ws['!cols']=[{wch:5},{wch:70},{wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:16},{wch:9},{wch:14}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Kalkulator ofertowy MVA');return xblob(wb);
 }
@@ -1259,7 +1260,7 @@ async function calcXlsxPretty(){
   ws.mergeCells('A2:H2');const a2=ws.getCell('A2');a2.value=calcTitle();a2.font=ft({bold:true});
   ws.getCell('I2').value='Курс PLN/EUR';ws.getCell('I2').font=ft({bold:true,size:9});ws.getCell('I2').alignment={horizontal:'right'};
   const rt=ws.getCell('J2');rt.value=S.rate;rt.numFmt='0.0000';rt.font=ft({bold:true,color:{argb:'FF0000FF'}});rt.fill=fillA('FFFFFF99');rt.border=bdr();
-  const hd=['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка'];
+  const hd=CLX().hd;
   hd.forEach((v,i)=>{const x=ws.getCell(3,i+1);x.value=v;x.font=ft({bold:true,color:{argb:'FFFFFFFF'}});x.fill=fillA(NAVY);x.border=bdr(NAVY);x.alignment={horizontal:'center',vertical:'middle',wrapText:true}});
   ws.getRow(3).height=32;
   let r=4;const first=r;
@@ -1275,7 +1276,7 @@ async function calcXlsxPretty(){
       set('I',x.markup,'0.00');ws.getCell('I'+r).font=ft({color:{argb:'FF0000FF'}});ws.getCell('I'+r).fill=fillA('FFFFFF99');
       set('D',{formula:`ROUND(G${r}*I${r},2)`,result:x.sale},'#,##0.00','FFE2F0D9');set('E',{formula:`D${r}*C${r}`,result:x.saleT},'#,##0.00','FFE2F0D9');set('H',{formula:`G${r}*C${r}`,result:x.costT},'#,##0.00','FFFCE4E4');
       ws.getCell('E'+r).font=ft({bold:true});
-    }else{set('D','нет цены');ws.getCell('D'+r).font=ft({italic:true,color:{argb:'FFA62B2B'}})}
+    }else{set('D',CLX().nop);ws.getCell('D'+r).font=ft({italic:true,color:{argb:'FFA62B2B'}})}
     ws.getRow(r).height=Math.max(22,14*linesEst(ws.getCell('B'+r).value,76)+6);r++;
     if(x.ch&&x.ch.comp)x.ch.parts.forEach(p=>{const c2=p.o.currency||'',GR='FFF2F2F2';
       ['A','C','D','E','H','I'].forEach(c=>set(c,'',null,GR));
@@ -1284,11 +1285,11 @@ async function calcXlsxPretty(){
       if(c2==='PLN')set('G',{formula:`F${r}/$J$2`,result:p.eur},'#,##0.00',GR);else if(c2==='EUR')set('G',{formula:`F${r}`,result:p.eur},'#,##0.00',GR);else set('G',Math.round(p.eur*100)/100,'#,##0.00',GR);
       r++});});
   const last=r-1;
-  ws.getCell('B'+r).value='ИТОГО';ws.getCell('E'+r).value={formula:`SUM(E${first}:E${last})`,result:totals().sale};ws.getCell('H'+r).value={formula:`SUM(H${first}:H${last})`,result:totals().cost};
+  ws.getCell('B'+r).value=CLX().tot;ws.getCell('E'+r).value={formula:`SUM(E${first}:E${last})`,result:totals().sale};ws.getCell('H'+r).value={formula:`SUM(H${first}:H${last})`,result:totals().cost};
   for(let k=1;k<=10;k++){const c=ws.getCell(r,k);c.font=ft({bold:true,size:11});c.fill=fillA(TOTAL);c.border={top:{style:'medium',color:{argb:NAVY}},bottom:{style:'medium',color:{argb:NAVY}}};if(k===5||k===8)c.numFmt='#,##0.00'}
   ws.getCell('B'+r).alignment={horizontal:'right'};
   const t=totals();r+=2;
-  [['Маржа, EUR',{formula:`E${r-2}-H${r-2}`,result:t.margin},'#,##0.00'],['Маржа от цены клиенту',{formula:`IF(E${r-2}=0,0,(E${r-2}-H${r-2})/E${r-2})`,result:t.pct/100},'0.0%']].forEach(([k,v,fm],i)=>{const a=ws.getCell('B'+(r+i));a.value=k;a.font=ft({bold:true});a.alignment={horizontal:'right'};const b=ws.getCell('E'+(r+i));b.value=v;b.numFmt=fm;b.font=ft({bold:true});b.border=bdr()});
+  [[CLX().mg,{formula:`E${r-2}-H${r-2}`,result:t.margin},'#,##0.00'],[CLX().mgp,{formula:`IF(E${r-2}=0,0,(E${r-2}-H${r-2})/E${r-2})`,result:t.pct/100},'0.0%']].forEach(([k,v,fm],i)=>{const a=ws.getCell('B'+(r+i));a.value=k;a.font=ft({bold:true});a.alignment={horizontal:'right'};const b=ws.getCell('E'+(r+i));b.value=v;b.numFmt=fm;b.font=ft({bold:true});b.border=bdr()});
   const buf=await wb.xlsx.writeBuffer();
   return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
@@ -1395,6 +1396,7 @@ async function exportDoc(kind,model,name,sub){
 
 
 /* ---------- файлы на RU и UK: перевод хранится по языкам ---------- */
+function afterLang(l){if(S.offers.length&&offTrMissing(l).length)run('ИИ переводит описания оферт',(s,p)=>fillOfferTr(s,p,l));else{changed();renderAll()}}
 const LNAME=l=>l==='uk'?'UK':'RU';
 const cliName=l=>`${l==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}_${LNAME(l)}`;
 const calcName=l=>`${calcFileBase()}_${LNAME(l)}`;
@@ -1430,12 +1432,12 @@ async function saveKit(langs,signal,prog){
       await saveFile(calcName(l)+'.xlsx',await xlsxSafe(calcXlsxPretty,calcXlsx),'calc');
       await saveFile(cliName(l)+'.xlsx',await xlsxSafe(cliXlsxPretty,cliXlsx),'cli');
       await exportDoc('pdf',docOffer(),cliName(l),'cli');
-      await exportDoc('docx',docOffer(),cliName(l),'cli');
+      await exportDoc('pdf',docClientDev(),`${l==='uk'?'rozbizhnosti':'otkloneniya'}_${safeName(S.name)}_${LNAME(l)}`,'cli');
     });
   }
   toast('Файлы сохранены: '+langs.map(LNAME).join(' + '));
 }
-const kitRow=()=>`<div class="row2" style="margin-top:8px"><b>Файлы по языкам:</b><button class="btn" data-kit="ru" type="button">Комплект RU</button><button class="btn" data-kit="uk" type="button">Комплект UK</button><button class="btn pri" data-kit="both" type="button">Оба языка</button><span class="hint">Комплект = калькулятор .xlsx + предложение .xlsx, PDF, Word, с суффиксом _RU / _UK в имени. Недостающий перевод подготовит ИИ.</span></div>`;
+const kitRow=()=>`<div class="row2" style="margin-top:8px"><b>Файлы по языкам:</b><button class="btn" data-kit="ru" type="button">Комплект RU</button><button class="btn" data-kit="uk" type="button">Комплект UK</button><button class="btn pri" data-kit="both" type="button">Оба языка</button><span class="hint">Комплект = калькулятор .xlsx + предложение .xlsx и PDF + отчёт о соответствии PDF, всё на выбранном языке, с суффиксом _RU / _UK в имени. Word не входит (кнопки Word остались отдельно). Недостающий перевод подготовит ИИ.</span></div>`;
 function bindKit(m){m.querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>{if(!S.req||!S.offers.length){toast('Нужны запрос и предложение');return}if(!leakOK())return;const v=b.dataset.kit;run('Готовлю файлы',(s,p)=>saveKit(v==='both'?['ru','uk']:[v],s,p))})}
 
 /* ---------- отчёт для клиента: соответствие запросу ---------- */
@@ -2404,7 +2406,7 @@ function vInv(m){
 document.addEventListener('click',e=>{
   const lg=e.target.closest('[data-lang]');if(lg){setLang(lg.dataset.lang);return}
   const ag=e.target.closest('[data-addgap]');if(ag&&S.req){const n=+ag.dataset.addgap;const it={no:String(n),name:'',qty:null,unit:'шт.',params:''};const its=S.req.items;let k=its.findIndex(x=>/^\d+$/.test(String(x.no).trim())&&+x.no>n);if(k<0)k=its.length;its.splice(k,0,it);changed();renderAll();toast('Добавлена пустая позиция №'+n+'. Заполните название и количество.');return}
-  const tl=e.target.closest('[data-trl]');if(tl){const v=tl.dataset.trl;if(v==='orig'){restoreItems();changed();renderAll()}else run('ИИ переводит позиции',(s,p)=>translateItems(v,s,p));return}
+  const tl=e.target.closest('[data-trl]');if(tl){const v=tl.dataset.trl;if(v==='orig'){restoreItems();changed();renderAll()}else run('ИИ переводит позиции',async(s,p)=>{await translateItems(v,s,p);await fillOfferTr(s,p,v)});return}
   const t=e.target.closest('[data-tab]');if(t&&!ctl){tab=t.dataset.tab;delOffer=-1;renderAll();window.scrollTo(0,0);return}
   const g=e.target.closest('[data-go]');if(g){tab=g.dataset.go;renderAll();window.scrollTo(0,0)}
 });
