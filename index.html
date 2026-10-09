@@ -222,7 +222,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 
   <p><span class="tabname">5. Файлы по языкам</span></p>
   <ol start="19">
-    <li>Кнопки <b>«Комплект RU»</b>, <b>«Комплект UK»</b> или <b>«Оба языка»</b> (вкладки «Калькулятор» и «Оферта клиенту») сохраняют в папку проекта: калькулятор .xlsx, предложение .xlsx и PDF, отчёт о соответствии PDF. В имени файла суффикс _RU или _UK. Word скачивается отдельной кнопкой, когда нужен.</li>
+    <li>Кнопки <b>«Комплект RU»</b>, <b>«Комплект UK»</b> или <b>«Оба языка»</b> (вкладки «Калькулятор» и «Оферта клиенту») сохраняют в папку проекта: калькулятор .xlsx, предложение .xlsx и PDF, отчёт о соответствии PDF. В имени файла суффикс _RU или _UK. Кнопки Word временно скрыты.</li>
     <li>Если для выбранного языка нет перевода, перед сохранением откроется ещё одно окно «Запрос к ИИ»: пройдите цикл, и сохранение продолжится.</li>
   </ol>
 
@@ -238,9 +238,9 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <li>Вкладка «Сравнение версий»: загрузите старое и новое предложение (и калькуляторы), приложение покажет, что изменилось, и даст отчёт.</li>
   </ol>
 
-  <p><span class="tabname">8. Статус и фактуры</span></p>
+  <p><span class="tabname">8. Фактуры</span></p>
   <ol start="25">
-    <li>«Статус и обновления»: этап заявки, следующий шаг и срок, журнал событий, кому отправлен запрос. «Фактуры»: счета поставщиков и клиентов и их оплата.</li>
+    <li>«Фактуры»: счета поставщиков и клиентов и их оплата.</li>
   </ol>
 
   <h3>Передать проект коллеге</h3>
@@ -320,7 +320,7 @@ const today=()=>new Date().toISOString().slice(0,10);
 /* ---------- state ---------- */
 function blank(){return{id:uid(),name:'Новый проект',clientLang:'ru',rate:4.3,rateDate:'',fxAuto:true,fxs:{},saleCur:'EUR',markup:1.2,reqText:'',req:null,tr:{},offers:[],rows:{},client:{name:'',number:'',date:today(),validity:'',delivery:'',payment:'',incoterms:'',auto:false},status:{state:'Новый запрос',nextStep:'',nextDate:'',log:[],inq:[]},invoices:[],ai:null,updated:Date.now()}}
 let S=blank(), tab='req', projects=[], dbh=null, uidv=null, ctl=null, delArmed=false;
-const TABS=[['req','Запрос'],['off','Предложения'],['calc','Калькулятор'],['cli','Оферта клиенту'],['rep','Отчёт'],['st','Статус и обновления'],['inv','Фактуры'],['cmp','Сравнение версий']];
+const TABS=[['req','Запрос'],['off','Предложения'],['calc','Калькулятор'],['cli','Оферта клиенту'],['rep','Отчёт'],['inv','Фактуры'],['cmp','Сравнение версий']];
 
 /* ---------- сохранение: папка на диске + кэш в браузере ---------- */
 let idb=null,dirH=null,dirOK=false;const base={};
@@ -1587,7 +1587,7 @@ async function saveKit(langs,signal,prog){
   }
   toast('Файлы сохранены: '+langs.map(LNAME).join(' + '));
 }
-const kitRow=()=>`<div class="row2" style="margin-top:8px"><b>Файлы по языкам:</b><button class="btn" data-kit="ru" type="button">Комплект RU</button><button class="btn" data-kit="uk" type="button">Комплект UK</button><button class="btn pri" data-kit="both" type="button">Оба языка</button><span class="hint">Комплект = калькулятор .xlsx + предложение .xlsx и PDF + отчёт о соответствии PDF, всё на выбранном языке, с суффиксом _RU / _UK в имени. Word не входит (кнопки Word остались отдельно). Недостающий перевод подготовит ИИ.</span></div>`;
+const kitRow=()=>`<div class="row2" style="margin-top:8px"><b>Файлы по языкам:</b><button class="btn" data-kit="ru" type="button">Комплект RU</button><button class="btn" data-kit="uk" type="button">Комплект UK</button><button class="btn pri" data-kit="both" type="button">Оба языка</button><span class="hint">Комплект = калькулятор .xlsx + предложение .xlsx и PDF + отчёт о соответствии PDF, всё на выбранном языке, с суффиксом _RU / _UK в имени. Word пока отключён. Недостающий перевод подготовит ИИ.</span></div>`;
 function bindKit(m){m.querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>{if(!S.req||!S.offers.length){toast('Нужны запрос и предложение');return}if(!leakOK())return;const v=b.dataset.kit;run('Готовлю файлы',(s,p)=>saveKit(v==='both'?['ru','uk']:[v],s,p))})}
 
 /* ---------- отчёт для клиента: соответствие запросу ---------- */
@@ -2049,7 +2049,7 @@ function vCalc(m){
     <td><select data-mk style="width:96px">${mkOpts(S.rows[it.no]&&num(S.rows[it.no].markup)!=null?S.rows[it.no].markup:'','по умолч.')}</select></td>
     <td class="num cl">${fmt(r.sale)}</td><td class="num cl">${fmt(r.saleT)}</td><td class="num">${r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'}</td></tr>${compRows(r)}`}).join('')}
     </tbody><tfoot><tr><td colspan="8">Итого</td><td class="num">${fmt(t.sale)}</td><td class="num">${fmt(t.pct,1)}</td></tr></tfoot></table></div>
-    <div class="row2"><button class="btn pri" id="xCalc" type="button">Скачать калькулятор .xlsx</button><button class="btn" id="pCalc" type="button">PDF</button><button class="btn" id="wCalc" type="button">Word</button><button class="btn" id="resetMk" type="button">Сбросить наценки и количества</button><span class="hint">Файл содержит маржу и курс. Клиенту его не отправляйте, для этого есть вкладка «Оферта клиенту».</span></div>
+    <div class="row2"><button class="btn pri" id="xCalc" type="button">Скачать калькулятор .xlsx</button><button class="btn" id="pCalc" type="button">PDF</button><button class="btn" id="wCalc" type="button" style="display:none" hidden>Word</button><button class="btn" id="resetMk" type="button">Сбросить наценки и количества</button><span class="hint">Файл содержит маржу и курс. Клиенту его не отправляйте, для этого есть вкладка «Оферта клиенту».</span></div>
     ${kitRow()}
   </section>`;
   $('#rate').onchange=e=>{S.rate=num(e.target.value)||S.rate;S.fxAuto=false;changed();renderAll()};
@@ -2155,7 +2155,7 @@ function verBox(){
   <p class="hint">Сохраняйте версию каждый раз, когда отправляете КП клиенту или меняете цены, описания и условия. Ниже программа покажет, что изменилось между версиями.</p>
   <div class="row2"><input type="text" id="verLbl" placeholder="комментарий к версии, например «после ответа AUMA»" style="min-width:280px"><button class="btn pri" id="verSave" type="button">Сохранить текущее КП как v${(vs.reduce((m,v)=>Math.max(m,v.n),0))+1}</button></div>
   ${vs.length?`<div class="tw"><table><thead><tr><th>Версия</th><th>Сохранена</th><th>Итого</th><th>Позиций</th><th></th></tr></thead><tbody>${vs.map(v=>`<tr><td>${esc(verName(v))}</td><td>${new Date(v.ts).toLocaleString('ru-RU')}</td><td class="num">${fmt(v.total)} ${esc(v.cur)}</td><td class="num">${v.rows.length}</td><td><button class="btn sm" data-verdel="${v.id}" type="button">Удалить</button></td></tr>`).join('')}</tbody></table></div>
-  <div class="row2" style="align-items:center"><label>Сравнить<select id="verA">${opt(verA,false)}</select></label><label>с<select id="verB">${opt(verB,true)}</select></label><button class="btn" id="pVer" type="button">PDF</button><button class="btn" id="wVer" type="button">Word</button></div>
+  <div class="row2" style="align-items:center"><label>Сравнить<select id="verA">${opt(verA,false)}</select></label><label>с<select id="verB">${opt(verB,true)}</select></label><button class="btn" id="pVer" type="button">PDF</button><button class="btn" id="wVer" type="button" style="display:none" hidden>Word</button></div>
   ${a&&b&&a!==b?verDiffHtml(a,b):''}`:''}`;
 }
 /* ---------- вкладка «Сравнение версий»: два файла предложений и два калькулятора ---------- */
@@ -2303,7 +2303,7 @@ function vCmp(m){
   <p class="sub">Загрузите старое и новое предложение клиенту и/или старый и новый калькулятор (Excel, Word, PDF). Программа найдёт все изменения: позиции, количества, описания, цены, условия, а по калькуляторам ещё себестоимость, наценку, курс и маржу. Файлы не привязаны к текущему проекту.</p>
   <h3>Предложения клиенту</h3><div class="grid">${inp('co','Старое предложение')}${inp('cn','Новое предложение')}</div>
   <h3>Калькуляторы</h3><div class="grid">${inp('ko','Старый калькулятор')}${inp('kn','Новый калькулятор')}</div>
-  <div class="row2"><button class="btn pri" id="cmpGo" type="button">Сравнить</button>${CMPR?'<button class="btn" id="cmpP" type="button">PDF</button><button class="btn" id="cmpW" type="button">Word</button>':''}</div>
+  <div class="row2"><button class="btn pri" id="cmpGo" type="button">Сравнить</button>${CMPR?'<button class="btn" id="cmpP" type="button">PDF</button><button class="btn" id="cmpW" type="button" style="display:none" hidden>Word</button>':''}</div>
   ${cmpHtml()}</section>`;
   m.querySelectorAll('[data-cf]').forEach(i=>i.onchange=e=>{CMPF[i.dataset.cf]=e.target.files[0]||null;CMPR=null;renderAll()});
   $('#cmpGo').onclick=()=>run('Сравниваю версии',(s,p)=>runCmp(s,p));
@@ -2326,7 +2326,7 @@ function vCli(m){
     <p class="sub">Версия для клиента: только цены за единицу и суммы в валюте предложения (${saleCur()}). Маржа, курс и поставщики здесь не показываются и в файл не попадают. Язык переключается кнопками RU / UK вверху.</p>
     <div class="grid" style="margin-bottom:12px">
       <label class="f">${L.to}<input type="text" id="cName" value="${esc(c.name)}"></label>
-      <label class="f">${L.from}<select id="cFromSel"><option value="">пусто (не указывать)</option><option value="own"${c.fromOn?' selected':''}>наша компания (мы — поставщик)</option></select></label>
+      <label class="f">${L.from} <span class="hint">(кто выставляет КП клиенту; не поставщик закупки)</span><select id="cFromSel"><option value="">пусто (не указывать)</option><option value="own"${c.fromOn?' selected':''}>наша компания (мы — поставщик)</option></select></label>
       ${c.fromOn?`<label class="f">Название поставщика в предложении<input type="text" id="cFrom" value="${esc(c.from||'')}" placeholder="например, ваше юр. лицо"></label>`:''}
       <label class="f">Номер предложения<input type="text" id="cNum" value="${esc(c.number)}"></label>
       <label class="f">${L.date}<input type="date" id="cDate" value="${esc(c.date)}"></label>
@@ -2340,7 +2340,7 @@ function vCli(m){
       <div class="grid" style="margin-top:8px"><label class="f">Срок действия предложения<input type="text" id="otVal" value="${esc(ownTerms().validity||'')}" placeholder="например, 14 дней"></label><label class="f">Условия оплаты<input type="text" id="otPay" value="${esc(ownTerms().payment||'')}" placeholder="например, 100% предоплата"></label><label class="f">Условия поставки (Incoterms)<input type="text" id="otInc" value="${esc(ownTerms().incoterms||'')}" placeholder="например, DAP, склад покупателя"></label></div>
       <div class="row2"><button class="btn" id="otSave" type="button">Сохранить и подставить в это КП</button><span class="hint">${dirH&&dirOK?'Сохраняются в общей папке на Диске, коллега увидит те же условия.':'Хранятся в этом браузере. Подключите общую папку на Диске, и условия увидит коллега.'}</span></div></details>
     <div class="row2"><button class="btn" id="cAuto" type="button">Подставить условия из предложений</button><button class="btn" id="cDesc" type="button">Описания на ${S.clientLang==='uk'?'украинском':'русском'} (ИИ)</button>${codeBlocks().length?`<button class="btn" id="cCodes" type="button">Коды привода с расшифровкой (ИИ)</button>`:''}</div>
-    <div class="tw"><table class="xt"><thead><tr><th>${L.no}</th><th>${L.desc}</th><th>${L.qty}</th><th>${L.unit}</th><th>${L.price}</th><th>${L.sum}</th><th style="background:rgba(70,150,170,.18)" title="Видно только на экране, в файл не попадает">Поставщик (только здесь)</th></tr></thead><tbody>
+    <div class="tw"><table class="xt"><thead><tr><th>${L.no}</th><th>${L.desc}</th><th>${L.qty}</th><th>${L.unit}</th><th>${L.price}</th><th>${L.sum}</th><th style="background:#2f7f92;color:#fff" title="Видно только на экране, в файл не попадает">Поставщик (только здесь)</th></tr></thead><tbody>
     ${rows.map(x=>`<tr data-no="${esc(x.no)}"><td>${esc(x.no)}</td><td><textarea data-desc>${esc(x.desc)}</textarea></td><td class="num">${x.qty==null?'':fmt(x.qty,x.qty%1?2:0)}</td><td>${esc(x.unit||L.pcs)}</td><td class="num">${x.price==null?L.onreq:fmt(x.price)}</td><td class="num">${x.sum==null?'—':fmt(x.sum)}</td><td style="background:rgba(70,150,170,.08);font-size:12px">${supBadge(rowInfo(S.req.items.find(i=>i.no===x.no)))}</td></tr>`).join('')}
     </tbody><tfoot><tr><td colspan="5">${L.total}</td><td class="num">${fmt(t.sale)}</td><td></td></tr></tfoot></table></div>
     <p class="hint">${L.vat}</p>
@@ -2348,14 +2348,14 @@ function vCli(m){
     ${(()=>{const d=S.req.items.map(rowInfo).filter(r=>r.q!==r.qReq);return d.length?`<p class="stale">Количество в предложении отличается от запроса по позициям: ${d.map(r=>esc(r.it.no)+' ('+fmt(r.qReq,0)+' → '+fmt(r.q,r.q%1?2:0)+')').join(', ')}. Причина обычно в минимальном количестве заказа поставщика. Изменить можно на вкладке «Калькулятор».</p>`:''})()}
     ${S.client.codes!==false?codeBlocks().map(b=>b.lines.filter(l=>l.equip.some(codeTxt)).map(l=>`<details class="offer" open><summary>Поз. ${esc(b.no)}: полное описание по кодам <span class="mono">${esc(l.code)}</span></summary><div class="tw"><table><thead><tr><th>Код</th><th>${S.clientLang==='uk'?'Розшифровка':'Расшифровка'}</th></tr></thead><tbody>${l.equip.filter(codeTxt).map(e=>`<tr><td class="mono">${esc(e.code)}</td><td>${esc(codeTxt(e))}</td></tr>`).join('')}</tbody></table></div></details>`).join('')).join(''):''}
     ${t.miss?`<p class="stale">Позиций без цены: ${t.miss}. В предложении у них будет «${L.onreq}».</p>`:''}
-    <div class="row2"><button class="btn pri" id="xCli" type="button">Скачать предложение .xlsx</button><button class="btn" id="pCli" type="button">PDF</button><button class="btn" id="wCli" type="button">Word</button><button class="btn" id="cCopy" type="button">Копировать текстом</button></div>
+    <div class="row2"><button class="btn pri" id="xCli" type="button">Скачать предложение .xlsx</button><button class="btn" id="pCli" type="button">PDF</button><button class="btn" id="wCli" type="button" style="display:none" hidden>Word</button><button class="btn" id="cCopy" type="button">Копировать текстом</button></div>
     ${kitRow()}
   </section>
   <section class="card">
     <h2>${(CD[S.clientLang]||CD.ru).title}</h2>
     <p class="sub">Отчёт для клиента: где предложение отличается от запроса (количество, единицы, срок, типоразмер). Здесь нет поставщиков, цен закупки и маржи. Комментарии можно править.</p>
     ${(()=>{const D=CD[S.clientLang]||CD.ru,rr=clientDev(),ST={ok:['ok',D.ok],dev:['crit',D.dev],none:['ask',D.none]};return`<div class="tw"><table class="xt"><thead><tr><th>${D.no}</th><th>${D.pos}</th><th>${D.req}</th><th>${D.off}</th><th>${D.lead}</th><th>${D.note}</th><th>${D.st}</th></tr></thead><tbody>${rr.map(x=>`<tr data-dno="${esc(x.no)}"><td>${esc(x.no)}</td><td style="text-align:left;min-width:180px">${esc(x.name)}</td><td class="num" style="text-align:center">${esc(x.req)}</td><td class="num" style="text-align:center">${esc(x.off)}</td><td style="text-align:center">${esc(x.lead)}</td><td><textarea data-cnote>${esc(x.note)}</textarea></td><td style="text-align:center"><span class="pill ${ST[x.status][0]}">${ST[x.status][1]}</span></td></tr>`).join('')}</tbody></table></div>`})()}
-    <div class="row2"><button class="btn pri" id="pDev" type="button">Скачать PDF</button><button class="btn" id="wDev" type="button">Word</button><button class="btn" id="rDev" type="button">Вернуть автотекст комментариев</button></div>
+    <div class="row2"><button class="btn pri" id="pDev" type="button">Скачать PDF</button><button class="btn" id="wDev" type="button" style="display:none" hidden>Word</button><button class="btn" id="rDev" type="button">Вернуть автотекст комментариев</button></div>
   </section>`;
   supAllBind();
   const bind=(id,k)=>{$(id).onchange=e=>{S.client[k]=e.target.value;changed();renderTabs()}};
@@ -2413,7 +2413,7 @@ function vRep(m){
     <div class="tw"><table><thead><tr><th>Поставщик</th><th>Позиций с ценой</th><th>Лучшая цена по</th><th>Итого, EUR (себестоимость)</th></tr></thead><tbody>
     ${per.map(p=>`<tr><td>${esc(p.o.supplier)} <span class="mono">${esc(p.o.number)}</span></td><td class="num">${p.cov} из ${S.req.items.length}</td><td class="num">${p.win}</td><td class="num">${p.cov?fmt(p.tot):'—'}${p.cov<S.req.items.length&&p.cov?'<div class="hint">неполный набор</div>':''}</td></tr>`).join('')}
     </tbody></table></div>
-    <div class="row2"><button class="btn pri" id="doTech" type="button">Техническая сверка (ИИ)</button><button class="btn" id="xRep" type="button">Скачать отчёт .html</button><button class="btn" id="pRep" type="button">PDF</button><button class="btn" id="wRep" type="button">Word</button>${S.ai?`<span class="hint">Сверка выполнена, замечаний от ИИ: ${S.ai.findings.length}. После правок в предложениях запустите её снова.</span>`:''}</div>
+    <div class="row2"><button class="btn pri" id="doTech" type="button">Техническая сверка (ИИ)</button><button class="btn" id="xRep" type="button">Скачать отчёт .html</button><button class="btn" id="pRep" type="button">PDF</button><button class="btn" id="wRep" type="button" style="display:none" hidden>Word</button>${S.ai?`<span class="hint">Сверка выполнена, замечаний от ИИ: ${S.ai.findings.length}. После правок в предложениях запустите её снова.</span>`:''}</div>
     <h3 class="rep-h" id="rpCmp" style="margin-top:12px">Сравнение с запросом по позициям</h3>
     <p class="hint">В каждой ячейке: количество, единица, срок поставки и цена за единицу в EUR. Красным отмечено несовпадение с запросом, звёздочка — выбранный поставщик.</p>
     <div class="tw"><table class="xt"><thead><tr><th>№</th><th>Запрос</th><th>Кол-во в запросе</th>${S.offers.map(o=>`<th>${esc(o.supplier)}</th>`).join('')}<th>Итог</th></tr></thead><tbody>
