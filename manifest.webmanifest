@@ -1,7 +1,7 @@
 {
  "id": "./",
- "name": "MVA — Заявки",
- "short_name": "MVA Заявки",
+ "name": "MVA Industries",
+ "short_name": "MVA Industries",
  "description": "Закупки: запрос, предложения поставщиков, калькулятор, предложение клиенту",
  "lang": "ru",
  "start_url": "./index.html",
