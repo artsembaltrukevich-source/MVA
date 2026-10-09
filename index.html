@@ -174,7 +174,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <ol class="cyc">
     <li>Нажмите кнопку шага (названа в каждой вкладке ниже). Откроется окно <b>«Запрос к ИИ»</b>.</li>
     <li>Нажмите <b>«Копировать и открыть Claude»</b> (или <b>«…ChatGPT»</b>): запрос копируется, чат открывается в новой вкладке.</li>
-    <li>В чате нажмите <b>Ctrl+V</b> и отправьте. Файл оферты или запроса приложите к сообщению в чате.</li>
+    <li>В чате нажмите <b>Ctrl+V</b> и отправьте. Файл оферты или запроса приложите к сообщению в чате. <b>Один чат на заявку:</b> первая строка первого запроса «Заявка: название» становится названием чата. После первого сообщения скопируйте адрес чата из адресной строки браузера и вставьте в поле «Чат этой заявки» в окне. Дальше все шаги по этой заявке (разбор оферт, привязка приводов, сверка, письма) кнопки открывают в том же чате.</li>
     <li>Скопируйте ответ ИИ <b>целиком</b> (кнопка «Копировать» под ответом в чате).</li>
     <li>Вернитесь в приложение: когда вкладка снова активна, ответ из буфера подставляется сам. Нажмите <b>«Вставить ответ из буфера и применить»</b>. Если браузер не дал читать буфер, вставьте ответ в поле «Ответ ИИ» вручную и нажмите «Применить ответ».</li>
     <li>Если ИИ ответил с ошибкой или оборвал ответ: напишите в чате «продолжи JSON с места обрыва», дополните ответ и вставьте снова. Нажатие «Отмена» ничего не меняет.</li>
@@ -283,6 +283,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 <dialog id="mdlg" aria-label="Ручной режим">
   <h2>Запрос к ИИ</h2>
   <p class="sub">1. Нажмите «Копировать и открыть Claude» или «…ChatGPT»: запрос окажется в буфере, чат откроется в новой вкладке. 2. В чате нажмите Ctrl+V и отправьте (файл оферты при необходимости приложите). 3. Скопируйте ответ целиком, вернитесь сюда и нажмите «Вставить ответ из буфера и применить».</p>
+  <div class="card" style="padding:10px;margin-bottom:8px"><div class="hint" id="mTitleLine"></div><label class="f">Чат этой заявки (вставьте адрес чата один раз: после первого сообщения скопируйте ссылку из адресной строки). Дальше кнопки будут открывать именно его.<input type="text" id="mChatUrl" placeholder="https://claude.ai/chat/… или https://chatgpt.com/c/…"></label></div>
   <label class="f">Запрос <span id="mInfo"></span><textarea id="mPrompt" readonly style="min-height:110px"></textarea></label>
   <div class="row2"><button class="btn pri" id="mClaude" type="button">Копировать и открыть Claude</button><button class="btn pri" id="mGpt" type="button">Копировать и открыть ChatGPT</button><button class="btn" id="mCopy" type="button">Только копировать</button></div>
   <label class="f">Ответ ИИ<textarea id="mAns" placeholder="Вставьте ответ сюда" style="min-height:150px"></textarea></label>
@@ -496,6 +497,13 @@ function manualAsk(prompt,o){
   return new Promise((res,rej)=>{
     const d=$('#mdlg');
     if(o.signal&&o.signal.aborted)return rej({code:'cancelled'});
+    const chatOk=u=>/^https:\/\/(claude\.ai\/chat\/|chatgpt\.com\/(c|g)\/)/.test(u||'');
+    const ttl=(S.name&&S.name!=='Новый проект'?S.name:((S.reqText||'').split('\n').find(x=>x.trim())||'').trim().slice(0,60))||('Заявка '+today());
+    const title='Заявка: '+ttl;
+    if(!chatOk(S.chatUrl))prompt=title+'\n\n'+prompt;
+    $('#mTitleLine').innerHTML=chatOk(S.chatUrl)?'Запросы идут в чат этой заявки: «'+esc(ttl)+'».':'Новый чат: первая строка запроса «'+esc(title)+'» станет его названием (при желании переименуйте чат вручную).';
+    $('#mChatUrl').value=S.chatUrl||'';
+    $('#mChatUrl').oninput=e=>{S.chatUrl=e.target.value.trim();changed();$('#mTitleLine').innerHTML=chatOk(S.chatUrl)?'Запросы идут в чат этой заявки.':'Ссылка не похожа на адрес чата Claude или ChatGPT: откроется новый чат.'};
     $('#mPrompt').value=prompt;$('#mAns').value='';$('#mInfo').textContent=prompt.length.toLocaleString('ru-RU')+' символов';
     if(o.onProg)o.onProg('вставьте ответ ИИ');
     let onFocus=()=>{};
@@ -504,9 +512,9 @@ function manualAsk(prompt,o){
     $('#mOk').onclick=()=>{const t=$('#mAns').value.trim();if(!t){toast('Вставьте ответ ИИ');return}cleanup();res({text:t,cut:false})};
     $('#mNo').onclick=cancel;d.oncancel=e=>{e.preventDefault();cancel()};
     $('#mCopy').onclick=()=>copyText(prompt);
-    const openChat=u=>{try{window.open(u,'_blank','noopener')}catch(e){}copyText(prompt)};
-    $('#mClaude').onclick=()=>openChat('https://claude.ai/new');
-    $('#mGpt').onclick=()=>openChat('https://chatgpt.com/');
+    const openChat=(u,host)=>{const own=chatOk(S.chatUrl)&&S.chatUrl.indexOf(host)>=0?S.chatUrl:u;try{window.open(own,'_blank','noopener')}catch(e){}copyText(prompt)};
+    $('#mClaude').onclick=()=>openChat('https://claude.ai/new','claude.ai');
+    $('#mGpt').onclick=()=>openChat('https://chatgpt.com/','chatgpt.com');
     const fromClip=async auto=>{
       try{const t=((await navigator.clipboard.readText())||'').trim();
         if(!t||t===prompt.trim()||t.length<12){if(!auto)toast('В буфере нет ответа ИИ. Скопируйте ответ в чате и повторите');return false}
