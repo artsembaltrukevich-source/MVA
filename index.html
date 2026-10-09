@@ -1660,7 +1660,7 @@ async function saveKit(langs,signal,prog){
       await saveFile(calcName(l)+'.xlsx',await xlsxSafe(calcXlsxPretty,calcXlsx),'calc');
       await saveFile(cliName(l)+'.xlsx',await xlsxSafe(cliXlsxPretty,cliXlsx),'cli');
       await exportDoc('pdf',docOffer(),cliName(l),'cli');
-      await exportDoc('pdf',docClientDev(),`${l==='uk'?'rozbizhnosti':'otkloneniya'}_${safeName(S.name)}_${LNAME(l)}`,'cli');
+      await exportDoc('pdf',docClientDev(),`${l==='uk'?'rozbizhnosti':'otkloneniya'}${calcFileBase().replace(/^kalkulator/,'')}_${LNAME(l)}`,'cli');
     });
   }
   toast('Файлы сохранены: '+langs.map(LNAME).join(' + '));
@@ -2448,7 +2448,7 @@ function vCli(m){
   bind('#cName','name');bind('#cNum','number');bind('#cDate','date');bind('#cVal','validity');bind('#cDel','delivery');bind('#cPay','payment');bind('#cInc','incoterms');
   m.querySelectorAll('tr[data-no] [data-desc]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.no;S.rows[no]=Object.assign(S.rows[no]||{},{desc:e.target.value,descAi:false});changed()});
   m.querySelectorAll('tr[data-dno] [data-cnote]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.dno;S.rows[no]=Object.assign(S.rows[no]||{},{cnote:e.target.value});changed()});
-  {const nm=`${S.clientLang==='uk'?'rozbizhnosti':'otkloneniya'}_${safeName(S.name)}_${LNAME(S.clientLang)}`;$('#pDev').onclick=()=>exportDoc('pdf',docClientDev(),nm,'cli');$('#wDev').onclick=()=>exportDoc('docx',docClientDev(),nm,'cli');$('#rDev').onclick=()=>{Object.values(S.rows).forEach(r=>{r.cnote=null});changed();renderAll()}}
+  {const nm=()=>`${S.clientLang==='uk'?'rozbizhnosti':'otkloneniya'}${calcFileBase().replace(/^kalkulator/,'')}_${LNAME(S.clientLang)}`;$('#pDev').onclick=()=>exportDoc('pdf',docClientDev(),nm(),'cli');$('#wDev').onclick=()=>exportDoc('docx',docClientDev(),nm(),'cli');$('#rDev').onclick=()=>{Object.values(S.rows).forEach(r=>{r.cnote=null});changed();renderAll()}}
   $('#cAuto').onclick=()=>{autofill(true);changed();renderAll()};
   $('#otSave').onclick=()=>{const T={validity:$('#otVal').value.trim(),payment:$('#otPay').value.trim(),incoterms:$('#otInc').value.trim()};try{localStorage.setItem('mva_terms',JSON.stringify(T))}catch(e){toast('Не удалось сохранить в браузере')}saveSharedTerms(T);autofill(true);changed();renderAll();toast('Условия сохранены')};
   $('#cHide').onchange=e=>{S.client.hideMaker=e.target.checked;if(e.target.checked&&!S.client.hideNames)S.client.hideNames=makerNames().join(', ');changed();renderAll()};
