@@ -1455,15 +1455,20 @@ function cmpBlock(){
   return{t:'table',head:['№','Запрос',...os.map(o=>o.supplier),'Итог'],w:[5,26,...os.map(()=>Math.max(14,Math.floor(55/os.length))),11],al:['c','l',...os.map(()=>'l'),'c'],
     rows:cr.map(x=>[x.it.no,x.it.name+(x.it.params?', '+x.it.params:'')+' — запрос: '+(x.it.qty==null?'?':fmt(x.it.qty,x.it.qty%1?2:0))+' '+(x.it.unit||''),...x.cells.map(c=>c.none?'нет':(c.qBad||c.uBad?'≠ ':'')+c.qty+' '+c.unit+(c.chosen?' *':'')+'\n'+c.lead+' · '+c.unitEur+' EUR'),x.bad?'не совпадает':'совпадает'])};
 }
+const repFileBase=()=>calcFileBase().replace(/^kalkulator_/,'otchet_');
+function supSplit(){const m=new Map();S.req.items.forEach(it=>{const r=rowInfo(it);chParts(r.ch).forEach(p=>{let e=m.get(p.o.id);if(!e){e={o:p.o,n:0,cost:0};m.set(p.o.id,e)}e.n++;if(p.eur!=null)e.cost+=p.eur*r.q})});return[...m.values()]}
+const supLine=()=>supSplit().map(e=>(e.o.supplier||'?')+(e.o.number?' (оферта '+e.o.number+')':'')).join('; ')||'не выбраны';
+const supSplitHtml=()=>{const a=supSplit();return a.length?`<table><thead><tr><th>Поставщик</th><th>Оферта</th><th>Позиций</th><th>Себестоимость, EUR</th></tr></thead><tbody>${a.map(e=>`<tr><td>${esc(e.o.supplier||'?')}</td><td>${esc(e.o.number||'')}</td><td class="n">${e.n}</td><td class="n">${fmt(e.cost)}</td></tr>`).join('')}</tbody></table>`:''};
 function docReport(){
   const f=checks(),t=totals(),LV={crit:'Критично',ask:'Уточнить',info:'Информация'},rows=S.req.items.map(rowInfo);
   const order=['crit','ask','info'],sorted=[...f].sort((a,b)=>order.indexOf(a.sev)-order.indexOf(b.sev));
-  return{title:'Отчёт по заявке: '+S.name,meta:[['Дата',dRuF(today())],['Позиций в запросе',String(S.req.items.length)],['Предложений поставщиков',String(S.offers.length)],...(S.req.requiredText?[['Требуемый срок поставки',S.req.requiredText]]:[])],landscape:S.offers.length>2,
-   blocks:[{t:'h',text:'Итоги'},{t:'kv',items:[['Себестоимость, EUR',fmt(t.cost)],['Цена клиенту, EUR',fmt(t.sale)],['Маржа, EUR',fmt(t.margin)],['Маржа, %',fmt(t.pct,1)],['Позиций без цены',String(t.miss)]]},
+  return{title:'Отчёт по заявке: '+S.name,meta:[['Дата',dRuF(today())],['Выбранные поставщики',supLine()],['Позиций в запросе',String(S.req.items.length)],['Предложений поставщиков',String(S.offers.length)],...(S.req.requiredText?[['Требуемый срок поставки',S.req.requiredText]]:[])],landscape:S.offers.length>2,
+   blocks:[{t:'h',text:'Итоги (по выбранным поставщикам)'},{t:'kv',items:[['Себестоимость, EUR',fmt(t.cost)],['Цена клиенту, EUR',fmt(t.sale)],['Маржа, EUR',fmt(t.margin)],['Маржа, %',fmt(t.pct,1)],['Позиций без цены',String(t.miss)]]},
+    {t:'h',text:'Разбивка по выбранным поставщикам'},{t:'table',head:['Поставщик','Оферта','Позиций','Себестоимость, EUR'],w:[40,26,12,22],al:['l','l','c','r'],rows:supSplit().map(e=>[e.o.supplier||'?',e.o.number||'',String(e.n),fmt(e.cost)])},
     {t:'h',text:'Позиции и выбранные поставщики'},{t:'table',head:['№','Позиция','Кол-во','Поставщик','Цена, EUR/ед'],w:[6,44,9,26,15],al:['c','l','c','l','r'],rows:rows.map(r=>[r.it.no,r.it.name,String(r.q),r.ch?chSup(r.ch):'—',r.cost==null?'—':fmt(r.cost)])},
-    {t:'h',text:'Сравнение с запросом по позициям'},cmpBlock(),
+    {t:'h',text:'Сравнение со всеми офертами по позициям'},cmpBlock(),
     {t:'h',text:'Матрица соответствия параметров (запрос — оферта)'},matrixBlock(),
-    {t:'h',text:'Расхождения запрос — предложение'},
+    {t:'h',text:'Расхождения запрос — предложение (все оферты; пометка «(не выбран)»: оферта не выбрана для этой позиции)'},
     sorted.length?{t:'table',head:['Важность','Поз.','Тема','Описание'],w:[12,6,20,62],al:['l','c','l','l'],rows:sorted.map(x=>[LV[x.sev],x.item,x.topic,x.text])}:{t:'p',text:'Расхождений не найдено.'}]};
 }
 async function docPdf(m){
@@ -1813,12 +1818,12 @@ function reportHtml(){
   const f=checks(),t=totals(),L={crit:'Критично',ask:'Уточнить',info:'Информация'};
   const rows=S.req.items.map(rowInfo);
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Отчёт — ${esc(S.name)}</title><style>body{font:14px/1.45 Arial,sans-serif;margin:24px;color:#15222B}h1{font-size:22px}h2{font-size:16px;margin-top:24px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:5px 8px;text-align:left;vertical-align:top;font-size:13px}th{background:#eef1f2}.n{text-align:right;white-space:nowrap}.crit{color:#a62b2b;font-weight:bold}.ask{color:#8a5200;font-weight:bold}.info{color:#245b8a}</style></head><body>
-<h1>Отчёт по заявке: ${esc(S.name)}</h1><p>Дата: ${today()}. Позиций в запросе: ${S.req.items.length}. Предложений поставщиков: ${S.offers.length}.${S.req.requiredText?' Требуемый срок поставки: '+esc(S.req.requiredText)+'.':''}</p>
-<h2>Итоги</h2><table><tr><th>Себестоимость, EUR</th><th>Цена клиенту, EUR</th><th>Маржа, EUR</th><th>Маржа, %</th><th>Позиций без цены</th></tr><tr><td class="n">${fmt(t.cost)}</td><td class="n">${fmt(t.sale)}</td><td class="n">${fmt(t.margin)}</td><td class="n">${fmt(t.pct,1)}</td><td class="n">${t.miss}</td></tr></table>
+<h1>Отчёт по заявке: ${esc(S.name)}</h1><p><b>Выбранные поставщики:</b> ${esc(supLine())}</p><p>Дата: ${today()}. Позиций в запросе: ${S.req.items.length}. Предложений поставщиков: ${S.offers.length}.${S.req.requiredText?' Требуемый срок поставки: '+esc(S.req.requiredText)+'.':''}</p>
+<h2>Итоги (по выбранным поставщикам)</h2><table><tr><th>Себестоимость, EUR</th><th>Цена клиенту, EUR</th><th>Маржа, EUR</th><th>Маржа, %</th><th>Позиций без цены</th></tr><tr><td class="n">${fmt(t.cost)}</td><td class="n">${fmt(t.sale)}</td><td class="n">${fmt(t.margin)}</td><td class="n">${fmt(t.pct,1)}</td><td class="n">${t.miss}</td></tr></table>
 <h2>Позиции и выбранные поставщики</h2><table><tr><th>№</th><th>Позиция</th><th>Кол-во</th><th>Поставщик</th><th>Цена, EUR/ед</th></tr>${rows.map(r=>`<tr><td>${esc(r.it.no)}</td><td>${esc(r.it.name)}</td><td class="n">${r.q}</td><td>${r.ch?esc(chSup(r.ch)):'—'}</td><td class="n">${r.cost==null?'—':fmt(r.cost)}</td></tr>`).join('')}</table>
-<h2>Сравнение с запросом по позициям</h2><table><tr><th>№</th><th>Запрос</th><th>Кол-во в запросе</th>${S.offers.map(o=>`<th>${esc(o.supplier)}</th>`).join('')}<th>Итог</th></tr>${compareRows().map(x=>`<tr><td>${esc(x.it.no)}</td><td>${esc(x.it.name)}${x.it.params?'<br><small>'+esc(x.it.params)+'</small>':''}</td><td class="n">${x.it.qty==null?'?':fmt(x.it.qty,x.it.qty%1?2:0)} ${esc(x.it.unit||'')}</td>${x.cells.map(c=>c.none?'<td>нет</td>':`<td${c.qBad||c.uBad?' class="crit"':''}>${esc(c.qty)} ${esc(c.unit)}${c.chosen?' ★':''}<br><small>${esc(c.lead)} · ${c.unitEur} EUR</small></td>`).join('')}<td class="${x.bad?'crit':''}">${x.bad?'не совпадает':'совпадает'}</td></tr>`).join('')}</table>
+<h2>Сравнение со всеми офертами по позициям</h2><table><tr><th>№</th><th>Запрос</th><th>Кол-во в запросе</th>${S.offers.map(o=>`<th>${esc(o.supplier)}</th>`).join('')}<th>Итог</th></tr>${compareRows().map(x=>`<tr><td>${esc(x.it.no)}</td><td>${esc(x.it.name)}${x.it.params?'<br><small>'+esc(x.it.params)+'</small>':''}</td><td class="n">${x.it.qty==null?'?':fmt(x.it.qty,x.it.qty%1?2:0)} ${esc(x.it.unit||'')}</td>${x.cells.map(c=>c.none?'<td>нет</td>':`<td${c.qBad||c.uBad?' class="crit"':''}>${esc(c.qty)} ${esc(c.unit)}${c.chosen?' ★':''}<br><small>${esc(c.lead)} · ${c.unitEur} EUR</small></td>`).join('')}<td class="${x.bad?'crit':''}">${x.bad?'не совпадает':'совпадает'}</td></tr>`).join('')}</table>
 <h2>Матрица соответствия параметров (запрос — оферта)</h2>${matrixHtml()}
-<h2>Расхождения запрос — предложение</h2>${f.length?`<table><tr><th>Важность</th><th>Поз.</th><th>Тема</th><th>Описание</th></tr>${f.map(x=>`<tr><td class="${x.sev}">${L[x.sev]}</td><td>${esc(x.item)}</td><td>${esc(x.topic)}</td><td>${esc(x.text)}</td></tr>`).join('')}</table>`:'<p>Расхождений не найдено.</p>'}
+<h2>Расхождения запрос — предложение (все оферты; пометка «(не выбран)»: оферта не выбрана для этой позиции)</h2>${f.length?`<table><tr><th>Важность</th><th>Поз.</th><th>Тема</th><th>Описание</th></tr>${f.map(x=>`<tr><td class="${x.sev}">${L[x.sev]}</td><td>${esc(x.item)}</td><td>${esc(x.topic)}</td><td>${esc(x.text)}</td></tr>`).join('')}</table>`:'<p>Расхождений не найдено.</p>'}
 </body></html>`;
 }
 
@@ -2390,7 +2395,10 @@ function vRep(m){
       <div class="stat" data-jump="mtx"><b style="color:#8e5fd0">${paramMatrix().filter(x=>x.analog).length}</b><span>позиций с аналогом</span></div>
       <div class="stat"><b>${fmt(t.pct,1)}%</b><span>маржа по итогу</span></div>
     </div>
-    <h3 class="rep-h" id="rpSup">Поставщики</h3>
+    <h3 class="rep-h" id="rpSel">Выбрано в расчёте</h3>
+    <p class="hint">Итоги, матрица соответствия и «Позиции и выбранные поставщики» относятся к этому выбору: ${esc(supLine())}. Остальные оферты показаны в сравнении и в замечаниях с пометкой «(не выбран)».</p>
+    <div class="tw">${supSplitHtml()}</div>
+    <h3 class="rep-h" id="rpSup" style="margin-top:12px">Все оферты поставщиков</h3>
     <div class="tw"><table><thead><tr><th>Поставщик</th><th>Позиций с ценой</th><th>Лучшая цена по</th><th>Итого, EUR (себестоимость)</th></tr></thead><tbody>
     ${per.map(p=>`<tr><td>${esc(p.o.supplier)} <span class="mono">${esc(p.o.number)}</span></td><td class="num">${p.cov} из ${S.req.items.length}</td><td class="num">${p.win}</td><td class="num">${p.cov?fmt(p.tot):'—'}${p.cov<S.req.items.length&&p.cov?'<div class="hint">неполный набор</div>':''}</td></tr>`).join('')}
     </tbody></table></div>
@@ -2422,8 +2430,8 @@ function vRep(m){
       rows.forEach(r=>{r.classList.remove('flash');void r.offsetWidth;r.classList.add('flash')})};
     t.onclick=go;t.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}}});
   $('#doTech').onclick=()=>run('ИИ сверяет параметры',(s,p)=>techCheck(s,p));
-  $('#xRep').onclick=()=>saveFile(`otchet_${safeName(S.name)}.html`,reportHtml(),'rep');
-  $('#pRep').onclick=()=>exportDoc('pdf',docReport(),`otchet_${safeName(S.name)}`,'rep');$('#wRep').onclick=()=>exportDoc('docx',docReport(),`otchet_${safeName(S.name)}`,'rep');
+  $('#xRep').onclick=()=>saveFile(`${repFileBase()}.html`,reportHtml(),'rep');
+  $('#pRep').onclick=()=>exportDoc('pdf',docReport(),repFileBase(),'rep');$('#wRep').onclick=()=>exportDoc('docx',docReport(),repFileBase(),'rep');
   $('#doClar').onclick=()=>run('ИИ пишет письмо',(s,p)=>clarifyLetter($('#clSup').value,s,p));
   const cc=$('#clCopy');if(cc)cc.onclick=()=>copyText($('#clText').value);
 }
