@@ -289,7 +289,7 @@ const today=()=>new Date().toISOString().slice(0,10);
 /* ---------- state ---------- */
 function blank(){return{id:uid(),name:'Новый проект',clientLang:'ru',rate:4.3,rateDate:'',fxAuto:true,fxs:{},saleCur:'EUR',markup:1.2,reqText:'',req:null,tr:{},offers:[],rows:{},client:{name:'',number:'',date:today(),validity:'',delivery:'',payment:'',incoterms:'',auto:false},status:{state:'Новый запрос',nextStep:'',nextDate:'',log:[],inq:[]},invoices:[],ai:null,updated:Date.now()}}
 let S=blank(), tab='req', projects=[], dbh=null, uidv=null, ctl=null, delArmed=false;
-const TABS=[['req','Запрос'],['off','Предложения'],['calc','Калькулятор'],['cli','Оферта клиенту'],['rep','Отчёт'],['st','Статус и обновления'],['inv','Фактуры']];
+const TABS=[['req','Запрос'],['off','Предложения'],['calc','Калькулятор'],['cli','Оферта клиенту'],['rep','Отчёт'],['st','Статус и обновления'],['inv','Фактуры'],['cmp','Сравнение версий']];
 
 /* ---------- сохранение: папка на диске + кэш в браузере ---------- */
 let idb=null,dirH=null,dirOK=false;const base={};
@@ -603,7 +603,18 @@ function validWarn(){
   });
   return out;
 }
-const validBox=()=>{const w=validWarn();return w.length?`<div class="warnbox"><b>Срок действия оферт.</b><ul style="margin:6px 0 0 18px">${w.map(x=>`<li>${esc(x.text)}</li>`).join('')}</ul></div>`:''};
+function sumWarn(){
+  const out=[];
+  S.offers.forEach(o=>{
+    const ls=o.lines.filter(l=>!l.opt);
+    if(o.docTotal==null){out.push({sev:'info',text:`Оферта «${o.supplier}»: итог документа не найден, сверить сумму строк нечем.`});return}
+    if(!ls.length||ls.some(l=>num(l.qty)==null||num(l.price)==null)){out.push({sev:'ask',text:`Оферта «${o.supplier}»: у части строк нет количества или цены, сумму с итогом документа (${fmt(o.docTotal)} ${o.currency||''}) сверить нельзя.`});return}
+    const calc=ls.reduce((s,l)=>s+num(l.qty)*num(l.price),0),diff=Math.abs(calc-o.docTotal);
+    if(diff>Math.max(0.02,Math.abs(o.docTotal)*0.0005))out.push({sev:'crit',text:`Оферта «${o.supplier}»: сумма строк ${fmt(calc)} ${o.currency||''} не равна итогу документа ${fmt(o.docTotal)} ${o.currency||''} (разница ${fmt(diff)}). Возможно, потеряна строка или неверно прочитана цена или количество. Проверьте строки на вкладке «Предложения».`});
+  });
+  return out;
+}
+const validBox=()=>{const w=[...validWarn(),...sumWarn().filter(x=>x.sev!=='info')];return w.length?`<div class="warnbox"><b>Проверка оферт.</b><ul style="margin:6px 0 0 18px">${w.map(x=>`<li>${esc(x.text)}</li>`).join('')}</ul></div>`:''};
 const MKR_KEY='mva_mkrules';
 function mkRules(){if(!S.mkRules){try{S.mkRules=JSON.parse(localStorage.getItem(MKR_KEY)||'[]')}catch(e){S.mkRules=[]}}return S.mkRules}
 function saveMkRules(){try{localStorage.setItem(MKR_KEY,JSON.stringify(S.mkRules||[]))}catch(e){}}
@@ -866,19 +877,33 @@ function saleFx(){const c=saleCur();if(c==='EUR')return 1;if(c==='PLN')return nu
 const MKS=(()=>{const a=[];for(let v=110;v<=200;v+=5)a.push((v/100).toFixed(2));return a})();
 function mkOpts(cur,defLabel){let l=MKS.slice();const c=cur==null||cur===''?'':Number(cur).toFixed(2);if(c&&!l.includes(c))l=[c,...l].sort();return(defLabel?`<option value="">${defLabel}</option>`:'')+l.map(v=>`<option value="${v}"${v===c?' selected':''}>×${v}</option>`).join('')}
 const curOpts=cur=>{const c=(cur||'').toUpperCase();const l=CURS.includes(c)||!c?CURS:[c,...CURS];return(c?'':'<option value="">?</option>')+l.map(x=>`<option${x===c?' selected':''}>${x}</option>`).join('')};
+async function verifyRate(){
+  const r={at:Date.now(),mid0:S.rate,ask:null,bid:null,ecb:null,date:S.rateDate||''};
+  try{const x=await fetch('https://api.nbp.pl/api/exchangerates/rates/c/eur/?format=json');if(x.ok){const j=await x.json(),q=j.rates&&j.rates[0];if(q){r.bid=q.bid;r.ask=q.ask}}}catch(e){}
+  try{const x=await fetch('https://api.frankfurter.dev/v1/latest?base=EUR&symbols=PLN');if(x.ok){const j=await x.json();if(j.rates&&j.rates.PLN)r.ecb=j.rates.PLN}}catch(e){}
+  S.fxCheck=r;changed();
+}
+const fxCheckHtml=()=>{
+  const c=S.fxCheck;if(!c)return'<p class="hint">Сверка с рыночным курсом ещё не выполнена: нажмите «Загрузить курсы НБП».</p>';
+  const cmid=c.bid&&c.ask?(c.bid+c.ask)/2:null,refs=[['НБП, таблица A (средний)',c.mid0],['НБП, таблица C (банки, середина)',cmid],['ЕЦБ',c.ecb]].filter(x=>x[1]);
+  if(!refs.length)return'';
+  const mx=Math.max(...refs.map(x=>Math.abs(x[1]-S.rate)/S.rate*100));
+  return`<p class="${mx>1?'stale':'hint'}">Сверка курса ${S.rate}: ${refs.map(x=>x[0]+' '+fmt(x[1],4)).join(' · ')}${c.bid&&c.ask?' · банки: покупка '+fmt(c.bid,4)+' / продажа '+fmt(c.ask,4):''}. ${mx>1?'Ваш курс отличается от рыночного до '+fmt(mx,1)+'%, проверьте.':'Расхождение с источниками не больше '+fmt(mx,2)+'%.'}</p>`;
+};
 async function loadNbp(){
   const r=await fetch('https://api.nbp.pl/api/exchangerates/tables/A/?format=json');if(!r.ok)throw{message:'НБП ответил ошибкой '+r.status};
   const j=(await r.json())[0];const m={};j.rates.forEach(x=>m[x.code]=x.mid);
   if(!m.EUR)throw{message:'В таблице НБП нет EUR'};
   S.rate=Math.round(m.EUR*10000)/10000;S.fxAuto=true;S.rateDate=j.effectiveDate+' ('+j.no+')';
   const t=fxTab();Object.keys(m).forEach(c=>{if(c!=='EUR')t[c]=Math.round(m.EUR/m[c]*10000)/10000});
+  verifyRate().then(()=>{if(tab==='calc')renderAll()}).catch(()=>{});
   return j.effectiveDate;
 }
 async function parseOffer(text,fname,signal,prog){
   const reqList=S.req?S.req.items.map(i=>`${i.no} | ${i.name} | ${i.qty==null?'':i.qty} ${i.unit||''} | ${(i.params||'').slice(0,220)}`).join('\n'):'(запрос не загружен)';
   const p=`Ты помощник инженера по закупкам. Ниже текст предложения поставщика (польский, английский, немецкий или другой язык) и список позиций запроса клиента. Извлеки данные предложения и сопоставь строки с позициями запроса.
-Верни только JSON: {"supplier":string,"number":string,"date":string,"currency":"EUR"|"PLN"|"USD"|string,"price_basis":"net"|"gross"|"unknown","validity_text":string,"validity_date":string|null,"payment":string,"delivery_text":string,"incoterms":string,"notes":string,"lines":[{"item":string|null,"article":string,"description":string,"qty":number|null,"unit":string,"unit_price":number|null,"line_total":number|null,"lead_text":string,"lead_days":number|null,"note":string,"order_code":string,"equipment":[{"code":string,"meaning":string}]}]}
-Правила: ничего не выдумывай; чего нет в документе, оставляй "" или null. Цены числами с точкой. description: ПОЛНОЕ описание позиции ДОСЛОВНО на языке оригинала, со всеми пунктами, маркерами и параметрами (тип изделия, исполнение, материал, среда, температура, строительная длина, покрытие, присоединение и т.д.), без сокращений, пересказа, многоточий и пропусков; разрывы строк и маркеры списка заменяй на «; ». Не сокращай описание, даже если оно длинное. Если указана только сумма по строке, заполни line_total и оставь unit_price null. item: номер позиции запроса, к которой относится строка (по артикулу, типоразмеру, описанию), иначе null. Если на одну позицию приходится несколько строк (арматура и привод, комплект), выдай каждую строку отдельно с тем же item. validity_date в формате ГГГГ-ММ-ДД, если срок действия указан датой или его можно вычислить от даты предложения. lead_days: срок в календарных днях (недели × 7). order_code и equipment заполняй только если в предложении есть полный заказной код изделия и расшифровка его сегментов (так оформляют AUMA: «Kod», «Opis wyposażenia»): order_code — полный код дословно, equipment — каждая строка расшифровки отдельно в порядке документа, code — сегмент кода дословно, meaning — его описание дословно на языке документа, плюс первой строкой модель и тип изделия, а также данные «Połączenie z armaturą», «Zakres momentu», «Nastawa», «Zasilanie», вес, если они есть. Иначе order_code пустая строка, equipment пустой массив. Не включай в lines итоговые суммы, транспорт и НДС; если есть доставка, укажи её в notes. price_basis: gross только если явно сказано, что цены с НДС/брутто.
+Верни только JSON: {"supplier":string,"number":string,"date":string,"currency":"EUR"|"PLN"|"USD"|string,"price_basis":"net"|"gross"|"unknown","document_total":number|null,"validity_text":string,"validity_date":string|null,"payment":string,"delivery_text":string,"incoterms":string,"notes":string,"lines":[{"item":string|null,"article":string,"description":string,"qty":number|null,"unit":string,"unit_price":number|null,"line_total":number|null,"lead_text":string,"lead_days":number|null,"note":string,"order_code":string,"equipment":[{"code":string,"meaning":string}]}]}
+Правила: ничего не выдумывай; чего нет в документе, оставляй "" или null. Цены числами с точкой. document_total: итоговая сумма оферты без НДС в том виде, как она напечатана в документе (не вычисляй сама, иначе null). description: ПОЛНОЕ описание позиции ДОСЛОВНО на языке оригинала, со всеми пунктами, маркерами и параметрами (тип изделия, исполнение, материал, среда, температура, строительная длина, покрытие, присоединение и т.д.), без сокращений, пересказа, многоточий и пропусков; разрывы строк и маркеры списка заменяй на «; ». Не сокращай описание, даже если оно длинное. Если указана только сумма по строке, заполни line_total и оставь unit_price null. item: номер позиции запроса, к которой относится строка (по артикулу, типоразмеру, описанию), иначе null. Если на одну позицию приходится несколько строк (арматура и привод, комплект), выдай каждую строку отдельно с тем же item. validity_date в формате ГГГГ-ММ-ДД, если срок действия указан датой или его можно вычислить от даты предложения. lead_days: срок в календарных днях (недели × 7). order_code и equipment заполняй только если в предложении есть полный заказной код изделия и расшифровка его сегментов (так оформляют AUMA: «Kod», «Opis wyposażenia»): order_code — полный код дословно, equipment — каждая строка расшифровки отдельно в порядке документа, code — сегмент кода дословно, meaning — его описание дословно на языке документа, плюс первой строкой модель и тип изделия, а также данные «Połączenie z armaturą», «Zakres momentu», «Nastawa», «Zasilanie», вес, если они есть. Иначе order_code пустая строка, equipment пустой массив. Не включай в lines итоговые суммы, транспорт и НДС; если есть доставка, укажи её в notes. price_basis: gross только если явно сказано, что цены с НДС/брутто.
 
 ПОЗИЦИИ ЗАПРОСА (№ | наименование | кол-во | параметры):
 ${reqList}
@@ -888,7 +913,7 @@ ${clip(text,150000)}`;
   const both=await askBoth(p,signal,prog),r=both.a;
   if(!r||!Array.isArray(r.lines)||!r.lines.length)throw{message:'В предложении не найдены строки с позициями ('+fname+').'};
   const cur=String(r.currency||'').toUpperCase();
-  const o={id:uid(),file:fname,supplier:r.supplier||fname,number:r.number||'',date:r.date||'',currency:cur,fx:null,basis:r.price_basis||'unknown',validityText:r.validity_text||'',validityDate:r.validity_date||'',payment:r.payment||'',deliveryText:r.delivery_text||'',incoterms:r.incoterms||'',notes:r.notes||'',
+  const o={id:uid(),file:fname,supplier:r.supplier||fname,number:r.number||'',date:r.date||'',currency:cur,fx:null,basis:r.price_basis||'unknown',validityText:r.validity_text||'',validityDate:r.validity_date||'',payment:r.payment||'',deliveryText:r.delivery_text||'',incoterms:r.incoterms||'',notes:r.notes||'',docTotal:num(r.document_total),
     lines:r.lines.map(l=>{const q=num(l.qty);let pr=num(l.unit_price);const lt=num(l.line_total);if(pr==null&&lt!=null&&q)pr=r2(lt/q);
       const it=l.item==null?'':String(l.item);
       return{id:uid(),item:S.req&&S.req.items.some(x=>x.no===it)?it:'',article:l.article||'',desc:l.description||'',qty:q,unit:l.unit||'',price:pr,lead:l.lead_text||'',leadDays:num(l.lead_days),note:l.note||'',code:l.order_code||'',equip:Array.isArray(l.equipment)?l.equipment.map(e=>({code:String(e.code||''),txt:String(e.meaning||'')})).filter(e=>e.code||e.txt):[],opt:false}})};
@@ -915,10 +940,18 @@ const cands=no=>S.offers.map(o=>offerCost(o,no)).filter(Boolean);
 function best(no){const c=cands(no).filter(x=>x.eur!=null);return c.length?c.reduce((a,b)=>b.eur<a.eur?b:a):null}
 
 /* ---------- step 3: calc ---------- */
-const supOn=()=>S.supHide!==true;
+const supOn=()=>true;
 const chSupD=ch=>supOn()?chSup(ch):'';
 const chSup=ch=>ch?(ch.comp?ch.parts.map(p=>p.o.supplier).join(' + '):ch.o.supplier):'';
 const chPriceS=ch=>ch?(ch.comp?ch.parts.map(p=>fmt(p.cur)+' '+(p.o.currency||'')).join(' + '):fmt(ch.cur)+' '+(ch.o.currency||'')):'—';
+const chParts=ch=>ch?(ch.comp?ch.parts:[ch]):[];
+const _arts=p=>[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');
+const chSupFull=ch=>chParts(ch).map(p=>(p.o.supplier||'')+(p.o.number?' №'+p.o.number:'')+(_arts(p)?' · арт. '+_arts(p):'')).join(' + ');
+function supMeta(r){
+  if(!r.ch)return'';
+  return chParts(r.ch).map(p=>{const ld=p.lines.map(l=>l.leadDays).filter(x=>x!=null),lt=ld.length?Math.max(...ld)+' дн.':(p.lines.map(l=>l.lead).filter(Boolean)[0]||'');
+    return`<div class="hint">${esc([p.o.number?'оферта №'+p.o.number:'',_arts(p),lt].filter(Boolean).join(' · '))}</div>`}).join('');
+}
 const partKind=p=>hasAct(p.lines)?'Привод':'Арматура';
 const partLabel=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+': '+(supOn()?(p.o.supplier||'')+(a?' — ':''):'')+a+' ('+(p.o.currency||'')+')'};
 const docSubs=r=>r.ch&&r.ch.comp?r.ch.parts.map(p=>['','   ↳ '+partLabel(p),'',supOn()?p.o.supplier:'',fmt(p.cur)+' '+(p.o.currency||''),fmt(p.eur),'','','','']):[];
@@ -1001,7 +1034,7 @@ function calcXlsx(){
   let r=4;const first=r;
   rows.forEach(x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
-    ws['A'+r]={t:'s',v:it.no};ws['B'+r]={t:'s',v:(it.name+(it.params?', '+it.params:''))+(o&&supOn()?'  [поставщик: '+chSup(x.ch)+']':'')};
+    ws['A'+r]={t:'s',v:it.no};ws['B'+r]={t:'s',v:(it.name+(it.params?', '+it.params:''))+(o&&supOn()?'  [поставщик: '+chSupFull(x.ch)+']':'')};
     ws['C'+r]={t:'n',v:x.q};
     if(x.ch){
       if(x.ch.comp){ws['G'+r]={t:'n',f:`SUM(G${r+1}:G${r+x.ch.parts.length})`}}
@@ -1049,13 +1082,33 @@ function actMissing(it,r){return!!(r&&r.ch&&ACT_REQ.test((it.name||'')+' '+(it.p
 const noActTxt=()=>S.clientLang==='uk'?'Привід у вартість не входить':'Привод в стоимость не входит';
 const actBox=()=>{if(!S.req)return'';const a=S.req.items.filter(it=>actMissing(it,rowInfo(it)));
   return a.length?`<div class="warnbox"><b>Привод не оценён.</b> В запросе привод есть, а в выбранных офертах его нет (цена только на арматуру): поз. ${a.map(x=>esc(x.no)).join(', ')}. В предложении клиенту у этих позиций автоматически стоит пометка «${esc(noActTxt())}». Чтобы цена была с приводом, загрузите оферту на привод и соберите комплект на вкладке «Калькулятор».</div>`:''};
+let termsSynced=false;
+async function saveSharedTerms(T){if(!(dirH&&dirOK))return false;try{const fh=await dirH.getFileHandle('_mva_terms.json',{create:true}),w=await fh.createWritable();await w.write(JSON.stringify({app:'mva-zayavki',terms:T,updated:Date.now()}));await w.close();return true}catch(e){return false}}
+async function syncTerms(){if(!(dirH&&dirOK))return false;try{const fh=await dirH.getFileHandle('_mva_terms.json'),j=JSON.parse(await (await fh.getFile()).text());if(j&&j.terms&&(j.terms.validity||j.terms.payment||j.terms.incoterms)){localStorage.setItem('mva_terms',JSON.stringify(j.terms));return true}}catch(e){}return false}
+const ownTerms=()=>{try{return JSON.parse(localStorage.getItem('mva_terms')||'{}')||{}}catch(e){return{}}};
+function supTerms(k){
+  const f={validity:o=>o.validityText,payment:o=>o.payment,incoterms:o=>o.incoterms}[k];
+  const v=_uq(S.offers.map(o=>f(o)).filter(Boolean));return v.length?v.join('; '):'';
+}
+const supHint=k=>{const v=supTerms(k);return v?`<span class="hint">Условие поставщика (в КП не копируется): ${esc(v)}</span>`:''};
+function leakCheck(){
+  if(!S.req)return[];
+  const names=_uq(S.offers.flatMap(o=>[String(o.supplier||'').trim(),String(o.supplier||'').trim().split(/[\s,.]+/)[0]]).concat(makerNames())).filter(x=>x&&x.length>=3);
+  const c=S.client,bag=cliRows().map(x=>[x.no,x.desc]).concat([['условия',[c.name,c.validity,c.delivery,c.payment,c.incoterms].join(' | ')]]),res=[];
+  bag.forEach(([no,t])=>{const low=String(t).toLowerCase();
+    names.forEach(n=>{if(low.includes(n.toLowerCase()))res.push('«'+n+'» (поз. '+no+')')});
+    if(/маржа|себестоим|наценк|margin|markup|marża/i.test(t))res.push('служебное слово (поз. '+no+')')});
+  return _uq(res);
+}
+const leakOK=()=>{const l=leakCheck();return!l.length||confirm('В предложении клиенту найдено: '+l.slice(0,6).join('; ')+'.\nВсё равно скачать?')};
+const leakBox=()=>{const l=leakCheck();return l.length?`<div class="warnbox"><b>В тексте КП есть данные поставщика или служебные слова:</b> ${l.slice(0,8).map(esc).join('; ')}. Включите «Не указывать производителя и поставщика» или поправьте описание вручную.</div>`:''};
 function autofill(force){
   const c=S.client;if(!S.req)return;
   const chosen=S.req.items.map(rowInfo).filter(r=>r.ch).map(r=>r.ch.o);const uniq=[...new Set(chosen)];
-  if(force||!c.validity){const v=uniq.map(o=>o.validityText).filter(Boolean);c.validity=v.length?[...new Set(v)].join('; '):c.validity}
+  if(force||!c.validity)c.validity=ownTerms().validity||(force?'':c.validity||'');
   if(force||!c.delivery){const days=chosen.flatMap(o=>o.lines.map(l=>l.leadDays)).filter(x=>x!=null);if(days.length)c.delivery=(S.clientLang==='uk'?'до ':'до ')+Math.max(...days)+(S.clientLang==='uk'?' календарних днів':' календарных дней');else{const t=chosen.flatMap(o=>o.lines.map(l=>l.lead)).filter(Boolean);if(t.length)c.delivery=[...new Set(t)].join('; ')}}
-  if(force||!c.payment){const p=uniq.map(o=>o.payment).filter(Boolean);if(p.length)c.payment=[...new Set(p)].join('; ')}
-  if(force||!c.incoterms){const p=uniq.map(o=>o.incoterms).filter(Boolean);if(p.length)c.incoterms=[...new Set(p)].join('; ')}
+  if(force||!c.payment)c.payment=ownTerms().payment||(force?'':c.payment||'');
+  if(force||!c.incoterms)c.incoterms=ownTerms().incoterms||(force?'':c.incoterms||'');
   c.auto=true;
 }
 async function genDescs(signal,prog){
@@ -1189,7 +1242,7 @@ async function calcXlsxPretty(){
   rows.forEach(x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
     const set=(col,v,fmt,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fmt)c.numFmt=fmt;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
-    set('A',it.no,null,null,'center');set('B',(it.name+(it.params?', '+it.params:''))+(o&&supOn()?'  [поставщик: '+chSup(x.ch)+']':''),null,null,'left');set('C',x.q,'0.##',null,'center');
+    set('A',it.no,null,null,'center');set('B',(it.name+(it.params?', '+it.params:''))+(o&&supOn()?'  [поставщик: '+chSupFull(x.ch)+']':''),null,null,'left');set('C',x.q,'0.##',null,'center');
     if(x.ch){
       if(x.ch.comp){set('F','','#,##0.00','FFFCE4E4');set('G',{formula:`SUM(G${r+1}:G${r+x.ch.parts.length})`,result:x.cost},'#,##0.00','FFFCE4E4')}
       else if(cur==='PLN'){set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',{formula:`F${r}/$J$2`,result:x.cost},'#,##0.00','FFFCE4E4')}
@@ -1239,9 +1292,9 @@ function docOffer(){
 }
 function docCalc(){
   const rows=S.req.items.map(rowInfo),t=totals(),cu=saleCur();
-  return{title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)],['Наценка по умолчанию','×'+S.markup]],landscape:true,
+  return{title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)+(S.fxAuto!==false?' (НБП'+(S.rateDate?' '+S.rateDate:'')+')':' (задан вручную)')],['Наценка по умолчанию','×'+S.markup]],landscape:true,
    blocks:[{t:'table',head:['№','Позиция','Кол-во','Поставщик','Цена пост.','EUR/ед','Наценка ×','Клиенту/ед, EUR','Сумма клиенту, EUR','Маржа %'],w:[4,30,6,17,10,8,7,10,11,7],al:['c','l','c','l','r','r','c','r','r','r'],
-    rows:rows.flatMap(r=>[[r.it.no,r.it.name+(r.it.params?', '+r.it.params:''),fmt(r.q,r.q%1?2:0),r.ch?chSupD(r.ch):'',chPriceS(r.ch),fmt(r.cost),'×'+r.markup,fmt(r.sale),fmt(r.saleT),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]),total:['Итого, EUR',fmt(t.sale)]},
+    rows:rows.flatMap(r=>[[r.it.no,r.it.name+(r.it.params?', '+r.it.params:''),fmt(r.q,r.q%1?2:0),r.ch?chSupFull(r.ch):'',chPriceS(r.ch),fmt(r.cost),'×'+r.markup,fmt(r.sale),fmt(r.saleT),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]),total:['Итого, EUR',fmt(t.sale)]},
     {t:'kv',items:[['Себестоимость, EUR',fmt(t.cost)],['Цена клиенту, EUR',fmt(t.sale)],['Маржа, EUR',fmt(t.margin)],['Маржа от цены клиенту',fmt(t.pct,1)+'%'],...(saleCur()!=='EUR'?[['Цена клиенту, '+cu,fmt(cliTotal(cliRows()))]]:[])].concat(t.miss?[['Позиций без цены',String(t.miss)]]:[])},
     {t:'p',text:'Внутренний документ. Содержит маржу и курс, клиенту не отправлять.',note:true}]};
 }
@@ -1480,6 +1533,7 @@ function checks(){
   const req=S.req,t=today();
   {const g=numGaps();if(g.gaps.length)add('crit','—','Нумерация','В запросе нет номеров позиций: '+g.gaps.join(', ')+'. Возможно, позиция потеряна при разборе.');if(g.dups.length)add('ask','—','Нумерация','Повторяются номера позиций: '+g.dups.join(', ')+'.')}
   validWarn().filter(x=>x.sev==='ask').forEach(x=>add('ask','—','Срок действия',x.text));
+  sumWarn().forEach(x=>add(x.sev,'—','Сверка итога',x.text));
   S.offers.forEach(o=>{
     if(!o.validityDate&&!o.validityText)add('ask','—','Срок действия',`Оферта «${o.supplier}»: срок действия не указан.`);
     else if(o.validityDate&&o.validityDate<t)add('crit','—','Срок действия',`Оферта «${o.supplier}» истекла ${o.validityDate}.`);
@@ -1605,6 +1659,7 @@ function tabState(k){
   const has=!!S.req;
   if(k==='req')return{done:has,sub:has?S.req.items.length+' поз.':'загрузить'};
   if(k==='off')return{done:S.offers.length>0,sub:S.offers.length?S.offers.length+' оферт':'нет'};
+  if(k==='cmp')return{done:false,sub:CMPR?'готово':''};
   if(k==='st'){const s=S.status.state;return{done:s==='Закрыт'||s==='Доставлено клиенту',sub:s}}
   if(k==='inv'){const v=S.invoices,o=v.filter(x=>invState(x)==='over').length,u=v.filter(x=>invState(x)!=='paid').length;return{done:v.length>0&&!u,sub:v.length?(o?o+' просрочено':u?u+' не оплачено':'все оплачены'):'нет'}}
   if(!has)return{done:false,sub:''};
@@ -1616,7 +1671,7 @@ function tabState(k){
 function renderTabs(){
   $('#rail').innerHTML=TABS.map(([k,l],i)=>{const s=tabState(k);return`<button type="button" data-tab="${k}"${tab===k?' aria-current="step"':''}><span class="n${s.done?' done':''}">${s.done?'✓':i+1}</span><span>${l}<small>${esc(s.sub)}</small></span></button>`}).join('');
 }
-function renderAll(){renderHeader();renderTabs();const m=$('#main');({req:vReq,off:vOff,calc:vCalc,cli:vCli,rep:vRep,st:vSt,inv:vInv}[tab])(m)}
+function renderAll(){renderHeader();renderTabs();const m=$('#main');({req:vReq,off:vOff,calc:vCalc,cli:vCli,rep:vRep,st:vSt,inv:vInv,cmp:vCmp}[tab])(m)}
 const langSeg=()=>`<div class="row2"><span class="hint">Язык клиента:</span><span class="seg" role="group" aria-label="Язык клиента"><button type="button" data-lang="ru" aria-pressed="${S.clientLang==='ru'}">RU</button><button type="button" data-lang="uk" aria-pressed="${S.clientLang==='uk'}">UK</button></span></div>`;
 function needReq(m,txt){m.innerHTML=`<section class="card"><h2>Сначала загрузите запрос</h2><p class="sub">${txt}</p><button class="btn pri" data-go="req" type="button">К запросу</button></section>`}
 
@@ -1751,7 +1806,9 @@ function vCalc(m){
       ${[...new Set([...S.offers.map(o=>(o.currency||'').toUpperCase()),saleCur()])].filter(c=>c&&c!=='EUR'&&c!=='PLN').map(c=>`<label class="f">${c} за 1 EUR<input type="number" step="0.0001" data-fxc="${c}" value="${fxTab()[c]!=null?fxTab()[c]:''}"></label>`).join('')}
     </div>
     ${mkBox()}
-    <div class="row2" style="margin-bottom:12px"><button class="btn" id="nbp" type="button">Загрузить курсы НБП (Польша)</button><label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="fxAuto"${S.fxAuto!==false?' checked':''}> обновлять курсы автоматически (раз в день)</label><span class="hint">${S.rateDate?'Курсы НБП, таблица A: '+esc(S.rateDate)+'. ':''}Валюты считаются через злотый. Если вы правите курс вручную, автообновление отключается.</span></div>
+    <p class="${S.fxAuto!==false?'stale':'hint'}"><b>Курс в расчёте: ${S.rate} PLN за 1 EUR</b> — ${S.fxAuto!==false?(S.versions&&S.versions.length?'курс НБП '+esc(S.rateDate||'')+', зафиксирован: после сохранения версии КП он не обновляется.':'автоматически из НБП'+(S.rateDate?' на '+esc(S.rateDate):'')+'. Чтобы зафиксировать свой курс, введите его в поле выше.'):'задан вручную, автообновление выключено.'}</p>
+    ${fxCheckHtml()}
+    <div class="row2" style="margin-bottom:12px"><button class="btn" id="nbp" type="button">Загрузить курсы НБП (Польша)</button><label class="hint" style="display:flex;gap:6px;align-items:center">Режим курса <select id="fxAuto" style="width:auto"><option value="1"${S.fxAuto!==false?' selected':''}>Авто: на сегодня (НБП) со сверкой по банкам и ЕЦБ</option><option value="0"${S.fxAuto===false?' selected':''}>Вручную (мой курс)</option></select></label><span class="hint">${S.rateDate?'Курсы НБП, таблица A: '+esc(S.rateDate)+'. ':''}Валюты считаются через злотый. Если вы правите курс вручную, автообновление отключается.</span></div>
     <div class="stats">
       ${saleCur()!=='EUR'?`<div class="stat"><b>${fmt(cliTotal(cliRows()))}</b><span>Цена клиенту, ${saleCur()}</span></div>`:''}
       <div class="stat"><b>${fmt(t.cost)}</b><span>Себестоимость, EUR</span></div>
@@ -1760,11 +1817,10 @@ function vCalc(m){
       <div class="stat"><b>${fmt(t.pct,1)}%</b><span>Маржа от цены клиенту</span></div>
     </div>
     ${t.miss?`<p class="stale">Позиций без цены: ${t.miss}. Они не вошли в итог.</p>`:''}
-    <div class="row2" style="margin:8px 0"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="supHide"${S.supHide?' checked':''}> Поставщик: пусто (скрыть столбец и в калькуляторе, и в файлах PDF/Word/Excel)</label></div>
     ${compBox()}
     <div class="tw"><table class="xt"><thead><tr><th>№</th><th>Позиция</th><th>Кол-во</th><th>Поставщик</th><th>Цена пост.</th><th>EUR/ед</th><th>Наценка ×</th><th>Клиенту/ед</th><th>Сумма клиенту</th><th>Маржа %</th></tr></thead><tbody>
     ${rows.map(r=>{const it=r.it;return`<tr data-no="${esc(it.no)}"><td>${esc(it.no)}</td><td style="min-width:200px">${esc(it.name)}<div class="hint">${esc(it.params)}</div></td><td class="num"><input type="number" min="0" step="any" data-q value="${r.q}" style="width:84px;text-align:right${r.qSrc==='offer'&&r.qOff!==r.qReq||r.qSrc==='manual'?';border-color:var(--warn)':''}"><div class="hint">запрос: ${fmt(r.qReq,r.qReq%1?2:0)}${r.qOff!=null?' · оферта: '+fmt(r.qOff,r.qOff%1?2:0):''}</div></td>
-    <td>${!supOn()?'':`<select data-sup><option value="none"${(S.rows[it.no]||{}).offerId==='none'?' selected':''}>— пусто (без поставщика)</option>${r.cs.length?r.cs.map(c=>`<option value="${esc(c.o.id)}"${r.ch&&c.o===r.ch.o?' selected':''}>${esc(c.o.supplier)} — ${fmt(c.eur)} EUR${r.b&&c===r.b?' ★':''}</option>`).join(''):'<option>нет цены</option>'}</select>${compCell(r)}`}</td>
+    <td>${!supOn()?'':`<select data-sup><option value="none"${(S.rows[it.no]||{}).offerId==='none'?' selected':''}>— пусто (без поставщика)</option>${r.cs.length?r.cs.map(c=>`<option value="${esc(c.o.id)}"${r.ch&&c.o===r.ch.o?' selected':''}>${esc(c.o.supplier)} — ${fmt(c.eur)} EUR${r.b&&c===r.b?' ★':''}</option>`).join(''):'<option>нет цены</option>'}</select>${supMeta(r)}${compCell(r)}`}</td>
     <td class="num co">${r.ch?esc(chPriceS(r.ch)):'—'}</td><td class="num co">${fmt(r.cost)}</td>
     <td><select data-mk style="width:96px">${mkOpts(S.rows[it.no]&&num(S.rows[it.no].markup)!=null?S.rows[it.no].markup:'','по умолч.')}</select></td>
     <td class="num cl">${fmt(r.sale)}</td><td class="num cl">${fmt(r.saleT)}</td><td class="num">${r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'}</td></tr>${compRows(r)}`}).join('')}
@@ -1772,9 +1828,8 @@ function vCalc(m){
     <div class="row2"><button class="btn pri" id="xCalc" type="button">Скачать калькулятор .xlsx</button><button class="btn" id="pCalc" type="button">PDF</button><button class="btn" id="wCalc" type="button">Word</button><button class="btn" id="resetMk" type="button">Сбросить наценки и количества</button><span class="hint">Файл содержит маржу и курс. Клиенту его не отправляйте, для этого есть вкладка «Оферта клиенту».</span></div>
   </section>`;
   $('#rate').onchange=e=>{S.rate=num(e.target.value)||S.rate;S.fxAuto=false;changed();renderAll()};
-  $('#fxAuto').onchange=e=>{S.fxAuto=e.target.checked;changed();if(S.fxAuto){nbpDay='';renderAll()}};
-  if(S.fxAuto!==false&&nbpDay!==today()){nbpDay=today();loadNbp().then(d=>{S.ai=null;changed();if(tab==='calc'){renderAll();toast('Курсы НБП обновлены: '+d)}}).catch(()=>{})}
-  $('#supHide').onchange=e=>{S.supHide=e.target.checked;changed();renderAll()};
+  $('#fxAuto').onchange=e=>{S.fxAuto=e.target.value==='1';changed();if(S.fxAuto){nbpDay=today();loadNbp().then(()=>{S.ai=null;changed();renderAll();toast('Курс обновлён на сегодня')}).catch(()=>toast('Не удалось загрузить курс НБП'))}else renderAll()};
+  if(S.fxAuto!==false&&nbpDay!==today()&&!(S.versions&&S.versions.length)){nbpDay=today();loadNbp().then(d=>{S.ai=null;changed();if(tab==='calc'){renderAll();toast('Курсы НБП обновлены: '+d)}}).catch(()=>{})}
   $('#sCur').onchange=e=>{S.saleCur=e.target.value;changed();renderAll()};
   $('#qm').onchange=e=>{S.qtyMode=e.target.value;changed();renderAll()};
   m.querySelectorAll('[data-fxc]').forEach(i=>i.onchange=e=>{fxTab()[e.target.dataset.fxc]=num(e.target.value);S.fxAuto=false;S.ai=null;changed();renderAll()});
@@ -1825,7 +1880,210 @@ function compBox(){
     <p class="hint">Выберите выше оферты (арматура и привод), укажите номера позиций клиента, куда нужны приводы, и ИИ сопоставит каждую строку привода с нужной арматурой по присоединению (F10/F14/F16, SQ), DN/PN и количеству. Если поле пустое, берутся все позиции, где в запросе есть привод, а в цене его нет.</p>
     <div class="row2"><label>№ позиций<input type="text" id="cbPos" placeholder="например 13-17 или 13, 14, 16" style="width:240px"></label><button class="btn pri" id="cbAi" type="button">ИИ: привязать приводы к позициям</button></div>${actMapHtml()}</div></details>`;
 }
+/* ---------- версии предложения клиенту ---------- */
+let verA='',verB='cur';
+const VF=[['name','Адресат'],['number','Номер КП'],['date','Дата'],['from','Поставщик'],['validity','Срок действия'],['delivery','Срок поставки'],['payment','Условия оплаты'],['incoterms','Incoterms']];
+function makeSnap(n,label){
+  const rows=cliRows(),c=S.client;
+  return{id:uid(),n,label:label||'',ts:Date.now(),cur:saleCur(),client:{name:c.name||'',number:c.number||'',date:c.date||'',from:fromTxt(),validity:c.validity||'',delivery:c.delivery||'',payment:c.payment||'',incoterms:c.incoterms||''},rows:rows.map(x=>({no:x.no,desc:x.desc,qty:x.qty,unit:x.unit||'',price:x.price,sum:x.sum})),total:cliTotal(rows)};
+}
+function snapVersion(label){const vs=S.versions=S.versions||[];vs.push(makeSnap(vs.reduce((m,v)=>Math.max(m,v.n),0)+1,label));if(vs.length>40)vs.shift()}
+const verName=v=>v.n?('v'+v.n+(v.label?' — '+v.label:'')):'текущая (не сохранена)';
+const verGet=id=>id==='cur'||!id?makeSnap(0,''):(S.versions||[]).find(v=>v.id===id);
+function diffVer(a,b){
+  const head=[];VF.forEach(([k,l])=>{if((a.client[k]||'')!==(b.client[k]||''))head.push([l,a.client[k]||'—',b.client[k]||'—'])});
+  if(a.cur!==b.cur)head.push(['Валюта',a.cur,b.cur]);
+  const am=new Map(a.rows.map(x=>[x.no,x])),bm=new Map(b.rows.map(x=>[x.no,x])),items=[];
+  const P=(x,c)=>x==null?'по запросу':fmt(x)+' '+c,Q=x=>fmt(x||0,(x||0)%1?2:0),N=t=>String(t||'').replace(/\s+/g,' ').trim();
+  [...new Set([...a.rows.map(x=>x.no),...b.rows.map(x=>x.no)])].forEach(no=>{const x=am.get(no),y=bm.get(no);
+    if(!x){items.push([no,'Позиция добавлена','—',N(y.desc).slice(0,200)+' · '+Q(y.qty)+' × '+P(y.price,b.cur)]);return}
+    if(!y){items.push([no,'Позиция удалена',N(x.desc).slice(0,200),'—']);return}
+    if(N(x.desc)!==N(y.desc))items.push([no,'Описание',N(x.desc),N(y.desc)]);
+    if((x.qty||0)!==(y.qty||0))items.push([no,'Количество',Q(x.qty)+' '+x.unit,Q(y.qty)+' '+y.unit]);
+    if(Math.abs((x.price==null?-1:x.price)-(y.price==null?-1:y.price))>0.004){const d=x.price&&y.price?' ('+(y.price>=x.price?'+':'')+fmt((y.price-x.price)/x.price*100,1)+'%)':'';items.push([no,'Цена за ед.',P(x.price,a.cur),P(y.price,b.cur)+d])}});
+  return{head,items,ta:a.total||0,tb:b.total||0,ca:a.cur,cb:b.cur};
+}
+const verTot=d=>{const dl=d.tb-d.ta;return fmt(d.ta)+' '+d.ca+' → '+fmt(d.tb)+' '+d.cb+(d.ta?' ('+(dl>=0?'+':'')+fmt(dl)+', '+(dl>=0?'+':'')+fmt(dl/d.ta*100,1)+'%)':'')};
+function verDiffHtml(a,b){
+  const d=diffVer(a,b);
+  return`<p><b>${esc(verName(a))} → ${esc(verName(b))}</b><br>Итого: ${esc(verTot(d))}</p>
+  ${d.head.length?`<div class="tw"><table><thead><tr><th>Условие</th><th>Было</th><th>Стало</th></tr></thead><tbody>${d.head.map(x=>`<tr><td>${esc(x[0])}</td><td>${esc(x[1])}</td><td>${esc(x[2])}</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${d.items.length?`<div class="tw"><table><thead><tr><th>№</th><th>Что изменилось</th><th>Было</th><th>Стало</th></tr></thead><tbody>${d.items.map(x=>`<tr><td>${esc(x[0])}</td><td>${esc(x[1])}</td><td style="text-align:left;min-width:200px">${esc(x[2])}</td><td style="text-align:left;min-width:200px">${esc(x[3])}</td></tr>`).join('')}</tbody></table></div>`:(d.head.length?'':'<p class="hint">Изменений между этими версиями нет.</p>')}`;
+}
+function docVerDiff(a,b){
+  const d=diffVer(a,b),blocks=[{t:'kv',items:[['Итого',verTot(d)]]}];
+  if(d.head.length){blocks.push({t:'h',text:'Условия'},{t:'table',head:['Условие','Было','Стало'],w:[24,38,38],al:['l','l','l'],rows:d.head})}
+  if(d.items.length){blocks.push({t:'h',text:'Позиции'},{t:'table',head:['№','Что изменилось','Было','Стало'],w:[6,16,39,39],al:['c','l','l','l'],rows:d.items})}
+  if(!d.head.length&&!d.items.length)blocks.push({t:'p',text:'Изменений между этими версиями нет.'});
+  return{title:'Изменения в предложении: '+verName(a)+' → '+verName(b),meta:[['Дата',dRuF(today())],['Проект',S.name]],blocks,landscape:false};
+}
+function verBox(){
+  const vs=S.versions||[];
+  if(!verA||!vs.some(v=>v.id===verA))verA=vs.length?vs[vs.length-1].id:'';
+  if(verB!=='cur'&&!vs.some(v=>v.id===verB))verB='cur';
+  const opt=(sel,cur)=>vs.map(v=>`<option value="${v.id}"${sel===v.id?' selected':''}>${esc(verName(v))}</option>`).join('')+(cur?`<option value="cur"${sel==='cur'?' selected':''}>текущая (не сохранена)</option>`:'');
+  const a=verA?verGet(verA):null,b=verGet(verB);
+  return`<h3 style="margin-top:14px">Версии предложения клиенту</h3>
+  <p class="hint">Сохраняйте версию каждый раз, когда отправляете КП клиенту или меняете цены, описания и условия. Ниже программа покажет, что изменилось между версиями.</p>
+  <div class="row2"><input type="text" id="verLbl" placeholder="комментарий к версии, например «после ответа AUMA»" style="min-width:280px"><button class="btn pri" id="verSave" type="button">Сохранить текущее КП как v${(vs.reduce((m,v)=>Math.max(m,v.n),0))+1}</button></div>
+  ${vs.length?`<div class="tw"><table><thead><tr><th>Версия</th><th>Сохранена</th><th>Итого</th><th>Позиций</th><th></th></tr></thead><tbody>${vs.map(v=>`<tr><td>${esc(verName(v))}</td><td>${new Date(v.ts).toLocaleString('ru-RU')}</td><td class="num">${fmt(v.total)} ${esc(v.cur)}</td><td class="num">${v.rows.length}</td><td><button class="btn sm" data-verdel="${v.id}" type="button">Удалить</button></td></tr>`).join('')}</tbody></table></div>
+  <div class="row2" style="align-items:center"><label>Сравнить<select id="verA">${opt(verA,false)}</select></label><label>с<select id="verB">${opt(verB,true)}</select></label><button class="btn" id="pVer" type="button">PDF</button><button class="btn" id="wVer" type="button">Word</button></div>
+  ${a&&b&&a!==b?verDiffHtml(a,b):''}`:''}`;
+}
+/* ---------- вкладка «Сравнение версий»: два файла предложений и два калькулятора ---------- */
+let CMPF={co:null,cn:null,ko:null,kn:null},CMPR=null;
+const _t=v=>String(v==null?'':v).replace(/\s+/g,' ').trim();
+const _dk=d=>_t(d).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'').slice(0,60);
+function _roleOf(h,kind){
+  h=_t(h).toLowerCase();if(!h)return null;
+  if(/себестоим|собівартіст|koszt/.test(h))return'costTotal';
+  if(/(цена|ціна|cena).*пост.*eur|(цена|ціна).*закуп.*eur|cost.*eur/.test(h))return'costUnit';
+  if(/(цена|ціна|cena).*(пост|закуп)|supplier/.test(h))return'supPrice';
+  if(/наценк|націнк|markup|marża|marza/.test(h))return'markup';
+  if(/^(сумма|сума|sum|total|razem|wartość|wartosc|итого|разом)/.test(h))return'sum';
+  if(/(цена|ціна|cena|price).*(ед|за|од|unit)|^(цена|ціна|price|cena)/.test(h))return'price';
+  if(/^(№|no\.?|nr\.?|l\.?p\.?|поз\.?)$/.test(h))return'no';
+  if(/наименов|найменув|описан|description|opis|name|назва|позици/.test(h))return'desc';
+  if(/^(кол|к-сть|кільк|ilo|qty|quantity)/.test(h))return'qty';
+  if(/^(ед\.?|од\.?|unit|j\.?m)/.test(h))return'unit';
+  return null;
+}
+function parseSheets(sheets,kind){
+  for(const rows of sheets){
+    let hi=-1,cols={};
+    for(let i=0;i<Math.min(rows.length,40);i++){
+      const m={};rows[i].forEach((c,j)=>{const r=_roleOf(c,kind);if(r&&!(r in m))m[r]=j});
+      const need=kind==='cal'?(m.desc!=null&&(m.costUnit!=null||m.costTotal!=null||m.supPrice!=null)):(m.desc!=null&&(m.price!=null||m.sum!=null));
+      if(need&&Object.keys(m).length>=4){hi=i;cols=m;break}
+    }
+    if(hi<0)continue;
+    const items=[];let total=null,cur='EUR';
+    const ph=_t(rows[hi][cols.price!=null?cols.price:cols.sum]);const cm=ph.match(/EUR|PLN|USD|UAH|CZK|GBP/i);if(cm)cur=cm[0].toUpperCase();
+    let rate=null;
+    for(let i=0;i<hi;i++)rows[i].forEach((c,j)=>{if(/курс|kurs|rate/i.test(_t(c))&&rate==null){const cand=[rows[i][j+1],rows[i+1]&&rows[i+1][j],rows[i][j+2]].map(num).find(x=>x!=null&&x>0);if(cand!=null)rate=cand}});
+    const meta={name:'',number:'',date:'',from:'',validity:'',delivery:'',payment:'',incoterms:''};
+    const top=rows.slice(0,hi).flat().map(_t).filter(Boolean).join(' | ');
+    {const mn=top.match(/№\s*([\w\/.\-]+)/);if(mn)meta.number=mn[1];const md=top.match(/\d{2}\.\d{2}\.\d{4}|\d{4}-\d{2}-\d{2}/);if(md)meta.date=md[0]}
+    let end=false;
+    for(let i=hi+1;i<rows.length;i++){
+      const r=rows[i],txt=r.map(_t).join(' ');
+      if(!end){
+        if(r.some(c=>/^(итого|разом|всього|razem|total|suma)(?![\p{L}])/iu.test(_t(c)))){end=true;const sc=cols.sum!=null?num(r[cols.sum]):null;total=sc!=null?sc:r.map(num).filter(x=>x!=null).pop()??null;continue}
+        const desc=_t(r[cols.desc]);if(!desc&&cols.no!=null&&!_t(r[cols.no]))continue;
+        const x={no:cols.no!=null?_t(r[cols.no]):String(items.length+1),desc,qty:cols.qty!=null?num(r[cols.qty]):null,unit:cols.unit!=null?_t(r[cols.unit]):'',price:cols.price!=null?num(r[cols.price]):null,sum:cols.sum!=null?num(r[cols.sum]):null,
+          markup:cols.markup!=null?num(r[cols.markup]):null,supPrice:cols.supPrice!=null?num(r[cols.supPrice]):null,cost:cols.costUnit!=null?num(r[cols.costUnit]):null};
+        if(x.cost==null&&cols.costTotal!=null&&x.qty)x.cost=num(r[cols.costTotal])!=null?num(r[cols.costTotal])/x.qty:null;
+        if(x.price==null&&x.sum!=null&&x.qty)x.price=x.sum/x.qty;
+        if(x.price==null&&x.cost!=null&&x.markup!=null)x.price=r2(x.cost*x.markup);
+        if(x.sum==null&&x.price!=null&&x.qty!=null)x.sum=r2(x.price*x.qty);
+        if(!desc&&x.price==null&&x.qty==null)continue;
+        items.push(x);
+      }else{
+        const lab=r.findIndex(c=>_t(c));if(lab<0)continue;const c0=_t(r[lab]),mm=c0.match(/^([^:]{3,60}):\s*(.+)$/);let l,val;if(mm){l=mm[1].toLowerCase();val=mm[2]}else{l=c0.toLowerCase();val=r.slice(lab+1).map(_t).find(Boolean)}if(!val)continue;
+        if(/срок действия|термін дії|ważność|validity/.test(l))meta.validity=val;else if(/срок поставки|термін поставки|delivery|termin realizacji/.test(l))meta.delivery=val;else if(/оплат|payment|płatn|platn/.test(l))meta.payment=val;else if(/incoterms|условия поставки|умови поставки/.test(l))meta.incoterms=val;
+      }
+    }
+    if(items.length)return{kind,client:meta,rows:items,cur,rate,total:total!=null?total:items.reduce((s,x)=>s+(x.sum||0),0)};
+  }
+  return null;
+}
+async function parseCmpFile(f,kind,signal,prog){
+  const n=f.name.toLowerCase();
+  if(/\.(xlsx|xls|xlsm|csv)$/.test(n)){
+    const wb=XLSX.read(await f.arrayBuffer()),sheets=wb.SheetNames.map(s=>XLSX.utils.sheet_to_json(wb.Sheets[s],{header:1,defval:'',raw:true}));
+    const r=parseSheets(sheets,kind);if(r){r.file=f.name;return r}
+  }
+  const text=await readFile(f,{prog});
+  const p=kind==='cal'
+   ?`Это калькулятор предложения (внутренний документ с себестоимостью и наценкой). Извлеки данные.
+Верни только JSON: {"currency":string,"rate":number|null,"total":number|null,"items":[{"no":string,"desc":string,"qty":number|null,"unit":string,"supplier_price":number|null,"cost_unit_eur":number|null,"markup":number|null,"price_unit":number|null,"sum":number|null}]}
+Правила: desc полностью дословно, без сокращений. cost_unit_eur: себестоимость за единицу в EUR. markup: наценка множителем (1.3). price_unit: цена клиенту за единицу, sum: сумма по строке. Числа с точкой. Чего нет в документе, ставь null. Ничего не выдумывай.\n\nДОКУМЕНТ:\n${clip(text,120000)}`
+   :`Это коммерческое предложение клиенту. Извлеки данные.
+Верни только JSON: {"number":string,"date":string,"addressee":string,"supplier":string,"currency":string,"validity":string,"delivery":string,"payment":string,"incoterms":string,"total":number|null,"items":[{"no":string,"desc":string,"qty":number|null,"unit":string,"price":number|null,"sum":number|null}]}
+Правила: desc полностью дословно, без сокращений. price: цена за единицу, sum: сумма по строке. Числа с точкой. Чего нет, оставляй "" или null. Ничего не выдумывай.\n\nДОКУМЕНТ:\n${clip(text,120000)}`;
+  const j=await ai(p,signal,prog);
+  if(!j||!Array.isArray(j.items)||!j.items.length)throw{message:'Не удалось извлечь позиции из файла «'+f.name+'».'};
+  const rows=j.items.map((x,i)=>({no:_t(x.no)||String(i+1),desc:_t(x.desc),qty:num(x.qty),unit:_t(x.unit),price:num(kind==='cal'?x.price_unit:x.price),sum:num(x.sum),markup:num(x.markup),supPrice:num(x.supplier_price),cost:num(x.cost_unit_eur)}));
+  rows.forEach(x=>{if(x.price==null&&x.sum!=null&&x.qty)x.price=x.sum/x.qty;if(x.sum==null&&x.price!=null&&x.qty!=null)x.sum=r2(x.price*x.qty)});
+  return{kind,file:f.name,client:{name:_t(j.addressee),number:_t(j.number),date:_t(j.date),from:_t(j.supplier),validity:_t(j.validity),delivery:_t(j.delivery),payment:_t(j.payment),incoterms:_t(j.incoterms)},rows,cur:_t(j.currency)||'EUR',rate:num(j.rate),total:num(j.total)!=null?num(j.total):rows.reduce((s,x)=>s+(x.sum||0),0)};
+}
+function alignRows(a,b){
+  const na=new Set(a.rows.map(x=>x.no)),nb=new Set(b.rows.map(x=>x.no));
+  const ov=[...na].filter(k=>nb.has(k)).length/Math.max(1,Math.max(na.size,nb.size));
+  if(ov>=0.5)return[a,b];
+  const re=s=>Object.assign({},s,{rows:s.rows.map(x=>Object.assign({},x,{no:_dk(x.desc).slice(0,28)||x.no}))});
+  return[re(a),re(b)];
+}
+const pct=(x,y)=>x?((y-x)/x*100):null;
+function diffCal(a0,b0){
+  const[a,b]=alignRows(a0,b0),am=new Map(a.rows.map(x=>[x.no,x])),bm=new Map(b.rows.map(x=>[x.no,x])),items=[],flags=[];
+  const mg=x=>x.price&&x.cost!=null?(x.price-x.cost)/x.price*100:null;
+  [...new Set([...a.rows.map(x=>x.no),...b.rows.map(x=>x.no)])].forEach(no=>{
+    const x=am.get(no),y=bm.get(no);
+    if(!x){items.push({no,desc:y.desc,type:'add'});return}
+    if(!y){items.push({no,desc:x.desc,type:'del'});return}
+    const ch={no,desc:y.desc||x.desc,type:'chg',qty:null,cost:null,markup:null,price:null,margin:null,fl:[]};
+    if((x.qty||0)!==(y.qty||0))ch.qty=[x.qty,y.qty];
+    if(x.cost!=null&&y.cost!=null&&Math.abs(x.cost-y.cost)>0.005)ch.cost=[x.cost,y.cost];
+    if(x.markup!=null&&y.markup!=null&&Math.abs(x.markup-y.markup)>0.0001)ch.markup=[x.markup,y.markup];
+    if(x.price!=null&&y.price!=null&&Math.abs(x.price-y.price)>0.004)ch.price=[x.price,y.price];
+    const m1=mg(x),m2=mg(y);if(m1!=null&&m2!=null&&Math.abs(m1-m2)>0.05)ch.margin=[m1,m2];
+    if(ch.cost&&ch.price&&ch.cost[1]>ch.cost[0]&&ch.price[1]<ch.price[0])ch.fl.push('цена клиенту снижена при росте себестоимости');
+    if(ch.margin&&ch.margin[1]<ch.margin[0]-2)ch.fl.push('маржа упала на '+fmt(ch.margin[0]-ch.margin[1],1)+' п.п.');
+    if(m2!=null&&m2<=0)ch.fl.push('маржа нулевая или отрицательная');
+    if(x.desc&&y.desc&&_dk(x.desc)!==_dk(y.desc))ch.desc2=[x.desc,y.desc];
+    if(ch.qty||ch.cost||ch.markup||ch.price||ch.margin||ch.desc2)items.push(ch);
+  });
+  const tot=s=>{let c=0,v=0;s.rows.forEach(x=>{const q=x.qty||0;if(x.cost!=null)c+=x.cost*q;v+=x.sum!=null?x.sum:(x.price||0)*q});return{cost:c,sale:v,margin:v-c,pct:v?(v-c)/v*100:null}};
+  return{items,ta:tot(a),tb:tot(b),ra:a.rate,rb:b.rate,ca:a.cur,cb:b.cur};
+}
+const _ch=(p,cur)=>p?fmt(p[0])+' → '+fmt(p[1])+(p[0]?' ('+(p[1]>=p[0]?'+':'')+fmt((p[1]-p[0])/p[0]*100,1)+'%)':''):'';
+function calRows(d){
+  return d.items.map(x=>x.type==='add'?[x.no,'Позиция добавлена',_t(x.desc).slice(0,120),'']:x.type==='del'?[x.no,'Позиция удалена',_t(x.desc).slice(0,120),'']:[x.no,_t(x.desc).slice(0,70),[x.qty?'Кол-во: '+fmt(x.qty[0],0)+' → '+fmt(x.qty[1],0):'',x.cost?'Себестоимость: '+_ch(x.cost):'',x.markup?'Наценка: ×'+fmt(x.markup[0],3)+' → ×'+fmt(x.markup[1],3):'',x.price?'Цена клиенту: '+_ch(x.price):'',x.margin?'Маржа: '+fmt(x.margin[0],1)+'% → '+fmt(x.margin[1],1)+'%':'',x.desc2?'Описание изменено':''].filter(Boolean).join('\n'),x.fl.join('; ')]);
+}
+function calSummary(d){
+  const t=(a,b,l,u)=>[l,fmt(a)+' '+u,fmt(b)+' '+u+(a?' ('+(b>=a?'+':'')+fmt((b-a)/a*100,1)+'%)':'')];
+  return[...(d.ra!=null||d.rb!=null?[['Курс',d.ra!=null?String(d.ra):'—',d.rb!=null?String(d.rb):'—']]:[]),t(d.ta.cost,d.tb.cost,'Себестоимость итого','EUR'),t(d.ta.sale,d.tb.sale,'Цена клиенту итого',d.cb||'EUR'),t(d.ta.margin,d.tb.margin,'Маржа','EUR'),['Маржа, % от цены',d.ta.pct!=null?fmt(d.ta.pct,1)+'%':'—',d.tb.pct!=null?fmt(d.tb.pct,1)+'%':'—']];
+}
+async function runCmp(signal,prog){
+  const r={};
+  if(CMPF.co&&CMPF.cn){prog&&prog('читаю предложения клиенту');const a=await parseCmpFile(CMPF.co,'cli',signal,prog),b=await parseCmpFile(CMPF.cn,'cli',signal,prog);const[a2,b2]=alignRows(a,b);r.cli={a:a2,b:b2,d:diffVer(Object.assign({n:0},a2),Object.assign({n:0},b2))}}
+  if(CMPF.ko&&CMPF.kn){prog&&prog('читаю калькуляторы');const a=await parseCmpFile(CMPF.ko,'cal',signal,prog),b=await parseCmpFile(CMPF.kn,'cal',signal,prog);r.cal={a,b,d:diffCal(a,b)}}
+  if(!r.cli&&!r.cal)throw{message:'Загрузите оба файла хотя бы в одной паре: два предложения или два калькулятора.'};
+  CMPR=r;
+}
+function cmpTbl(head,rows){return`<div class="tw"><table><thead><tr>${head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td style="text-align:left;white-space:pre-line">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
+function cmpHtml(){
+  if(!CMPR)return'';let h='';
+  if(CMPR.cli){const d=CMPR.cli.d;h+=`<h3>Предложения клиенту: «${esc(CMPR.cli.a.file)}» → «${esc(CMPR.cli.b.file)}»</h3><p><b>Итого:</b> ${esc(verTot(d))}</p>${d.head.length?cmpTbl(['Условие','Было','Стало'],d.head):''}${d.items.length?cmpTbl(['№','Что изменилось','Было','Стало'],d.items):(d.head.length?'':'<p class="hint">Изменений нет.</p>')}`}
+  if(CMPR.cal){const d=CMPR.cal.d;h+=`<h3 style="margin-top:14px">Калькуляторы: «${esc(CMPR.cal.a.file)}» → «${esc(CMPR.cal.b.file)}»</h3>${cmpTbl(['Показатель','Было','Стало'],calSummary(d))}${d.items.length?cmpTbl(['№','Позиция','Что изменилось','Замечание'],calRows(d)):'<p class="hint">Изменений по позициям нет.</p>'}`}
+  return h;
+}
+function docCmp(){
+  const blocks=[];
+  if(CMPR.cli){const d=CMPR.cli.d;blocks.push({t:'h',text:'Предложения клиенту: '+CMPR.cli.a.file+' → '+CMPR.cli.b.file},{t:'kv',items:[['Итого',verTot(d)]]});
+    if(d.head.length)blocks.push({t:'table',head:['Условие','Было','Стало'],w:[24,38,38],al:['l','l','l'],rows:d.head});
+    if(d.items.length)blocks.push({t:'table',head:['№','Что изменилось','Было','Стало'],w:[6,16,39,39],al:['c','l','l','l'],rows:d.items});else if(!d.head.length)blocks.push({t:'p',text:'Изменений нет.'})}
+  if(CMPR.cal){const d=CMPR.cal.d;blocks.push({t:'h',text:'Калькуляторы: '+CMPR.cal.a.file+' → '+CMPR.cal.b.file},{t:'table',head:['Показатель','Было','Стало'],w:[30,35,35],al:['l','l','l'],rows:calSummary(d)});
+    if(d.items.length)blocks.push({t:'table',head:['№','Позиция','Что изменилось','Замечание'],w:[6,24,48,22],al:['c','l','l','l'],rows:calRows(d)});else blocks.push({t:'p',text:'Изменений по позициям нет.'})}
+  return{title:'Сравнение версий',meta:[['Дата',dRuF(today())]],blocks,landscape:true};
+}
+function vCmp(m){
+  const fn=k=>CMPF[k]?`<span class="hint">${esc(CMPF[k].name)}</span>`:'<span class="hint">файл не выбран</span>';
+  const inp=(k,l)=>`<label class="f">${l}<input type="file" data-cf="${k}" accept=".xlsx,.xls,.xlsm,.csv,.docx,.pdf,.txt,.jpg,.jpeg,.png,.webp">${fn(k)}</label>`;
+  m.innerHTML=`<section class="card"><h2>Сравнение версий</h2>
+  <p class="sub">Загрузите старое и новое предложение клиенту и/или старый и новый калькулятор (Excel, Word, PDF). Программа найдёт все изменения: позиции, количества, описания, цены, условия, а по калькуляторам ещё себестоимость, наценку, курс и маржу. Файлы не привязаны к текущему проекту.</p>
+  <h3>Предложения клиенту</h3><div class="grid">${inp('co','Старое предложение')}${inp('cn','Новое предложение')}</div>
+  <h3>Калькуляторы</h3><div class="grid">${inp('ko','Старый калькулятор')}${inp('kn','Новый калькулятор')}</div>
+  <div class="row2"><button class="btn pri" id="cmpGo" type="button">Сравнить</button>${CMPR?'<button class="btn" id="cmpP" type="button">PDF</button><button class="btn" id="cmpW" type="button">Word</button>':''}</div>
+  ${cmpHtml()}</section>`;
+  m.querySelectorAll('[data-cf]').forEach(i=>i.onchange=e=>{CMPF[i.dataset.cf]=e.target.files[0]||null;CMPR=null;renderAll()});
+  $('#cmpGo').onclick=()=>run('Сравниваю версии',(s,p)=>runCmp(s,p));
+  const p=$('#cmpP');if(p){p.onclick=()=>exportDoc('pdf',docCmp(),'sravnenie_versij','rep');$('#cmpW').onclick=()=>exportDoc('docx',docCmp(),'sravnenie_versij','rep')}
+}
+
 function vCli(m){
+  if(!termsSynced&&dirH&&dirOK){termsSynced=true;syncTerms().then(ok=>{if(ok&&tab==='cli')renderAll()})}
   if(!S.req)return needReq(m,'Предложение клиенту строится по позициям запроса.');
   if(!S.offers.length){m.innerHTML=`<section class="card"><h2>Нет предложений</h2><p class="sub">Цены для клиента появятся после разбора предложений поставщиков.</p><button class="btn pri" data-go="off" type="button">К предложениям</button></section>`;return}
   if(!S.client.auto)autofill(false);
@@ -1834,7 +2092,7 @@ function vCli(m){
   <section class="card">
     <h2>${L.title}</h2>
     ${langSeg()}
-    ${trBox()}${actBox()}${descHint()}
+    ${trBox()}${actBox()}${descHint()}${leakBox()}
     <p class="sub">Версия для клиента: только цены за единицу и суммы в валюте предложения (${saleCur()}). Маржа, курс и поставщики здесь не показываются и в файл не попадают. Язык переключается кнопками RU / UK вверху.</p>
     <div class="grid" style="margin-bottom:12px">
       <label class="f">${L.to}<input type="text" id="cName" value="${esc(c.name)}"></label>
@@ -1842,17 +2100,21 @@ function vCli(m){
       ${c.fromOn?`<label class="f">Название поставщика в предложении<input type="text" id="cFrom" value="${esc(c.from||'')}" placeholder="например, ваше юр. лицо"></label>`:''}
       <label class="f">Номер предложения<input type="text" id="cNum" value="${esc(c.number)}"></label>
       <label class="f">${L.date}<input type="date" id="cDate" value="${esc(c.date)}"></label>
-      <label class="f">${L.validity}<input type="text" id="cVal" value="${esc(c.validity)}"></label>
+      <label class="f">${L.validity}<input type="text" id="cVal" value="${esc(c.validity)}">${supHint('validity')}</label>
       <label class="f">${L.delivery}<input type="text" id="cDel" value="${esc(c.delivery)}"></label>
-      <label class="f">${L.payment}<input type="text" id="cPay" value="${esc(c.payment)}"></label>
-      <label class="f">${L.incoterms}<input type="text" id="cInc" value="${esc(c.incoterms)}"></label>
+      <label class="f">${L.payment}<input type="text" id="cPay" value="${esc(c.payment)}">${supHint('payment')}</label>
+      <label class="f">${L.incoterms}<input type="text" id="cInc" value="${esc(c.incoterms)}">${supHint('incoterms')}</label>
     </div>
     <div class="row2" style="align-items:center"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="cHide"${c.hideMaker?' checked':''}> Не указывать производителя и поставщика в предложении клиенту</label>${c.hideMaker?`<label class="f" style="margin:0">Названия для скрытия (через запятую)<input type="text" id="cHideN" value="${esc(c.hideNames||makerNames().join(', '))}" style="width:260px"></label>`:''}</div>
+    <details class="offer" style="margin-bottom:10px"><summary><b>Мои стандартные условия</b> (подставляются в КП вместо условий поставщика)</summary>
+      <div class="grid" style="margin-top:8px"><label class="f">Срок действия предложения<input type="text" id="otVal" value="${esc(ownTerms().validity||'')}" placeholder="например, 14 дней"></label><label class="f">Условия оплаты<input type="text" id="otPay" value="${esc(ownTerms().payment||'')}" placeholder="например, 100% предоплата"></label><label class="f">Условия поставки (Incoterms)<input type="text" id="otInc" value="${esc(ownTerms().incoterms||'')}" placeholder="например, DAP, склад покупателя"></label></div>
+      <div class="row2"><button class="btn" id="otSave" type="button">Сохранить и подставить в это КП</button><span class="hint">${dirH&&dirOK?'Сохраняются в общей папке на Диске, коллега увидит те же условия.':'Хранятся в этом браузере. Подключите общую папку на Диске, и условия увидит коллега.'}</span></div></details>
     <div class="row2"><button class="btn" id="cAuto" type="button">Подставить условия из предложений</button><button class="btn" id="cDesc" type="button">Описания на ${S.clientLang==='uk'?'украинском':'русском'} (ИИ)</button>${codeBlocks().length?`<button class="btn" id="cCodes" type="button">Коды привода с расшифровкой (ИИ)</button>`:''}</div>
     <div class="tw"><table class="xt"><thead><tr><th>${L.no}</th><th>${L.desc}</th><th>${L.qty}</th><th>${L.unit}</th><th>${L.price}</th><th>${L.sum}</th></tr></thead><tbody>
     ${rows.map(x=>`<tr data-no="${esc(x.no)}"><td>${esc(x.no)}</td><td><textarea data-desc>${esc(x.desc)}</textarea></td><td class="num">${x.qty==null?'':fmt(x.qty,x.qty%1?2:0)}</td><td>${esc(x.unit||L.pcs)}</td><td class="num">${x.price==null?L.onreq:fmt(x.price)}</td><td class="num">${x.sum==null?'—':fmt(x.sum)}</td></tr>`).join('')}
     </tbody><tfoot><tr><td colspan="5">${L.total}</td><td class="num">${fmt(t.sale)}</td></tr></tfoot></table></div>
     <p class="hint">${L.vat}</p>
+    ${verBox()}
     ${(()=>{const d=S.req.items.map(rowInfo).filter(r=>r.q!==r.qReq);return d.length?`<p class="stale">Количество в предложении отличается от запроса по позициям: ${d.map(r=>esc(r.it.no)+' ('+fmt(r.qReq,0)+' → '+fmt(r.q,r.q%1?2:0)+')').join(', ')}. Причина обычно в минимальном количестве заказа поставщика. Изменить можно на вкладке «Калькулятор».</p>`:''})()}
     ${S.client.codes!==false?codeBlocks().map(b=>b.lines.filter(l=>l.equip.some(codeTxt)).map(l=>`<details class="offer" open><summary>Поз. ${esc(b.no)}: полное описание по кодам <span class="mono">${esc(l.code)}</span></summary><div class="tw"><table><thead><tr><th>Код</th><th>${S.clientLang==='uk'?'Розшифровка':'Расшифровка'}</th></tr></thead><tbody>${l.equip.filter(codeTxt).map(e=>`<tr><td class="mono">${esc(e.code)}</td><td>${esc(codeTxt(e))}</td></tr>`).join('')}</tbody></table></div></details>`).join('')).join(''):''}
     ${t.miss?`<p class="stale">Позиций без цены: ${t.miss}. В предложении у них будет «${L.onreq}».</p>`:''}
@@ -1872,12 +2134,18 @@ function vCli(m){
   m.querySelectorAll('tr[data-dno] [data-cnote]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.dno;S.rows[no]=Object.assign(S.rows[no]||{},{cnote:e.target.value});changed()});
   {const nm=`${S.clientLang==='uk'?'rozbizhnosti':'otkloneniya'}_${safeName(S.name)}`;$('#pDev').onclick=()=>exportDoc('pdf',docClientDev(),nm,'cli');$('#wDev').onclick=()=>exportDoc('docx',docClientDev(),nm,'cli');$('#rDev').onclick=()=>{Object.values(S.rows).forEach(r=>{r.cnote=null});changed();renderAll()}}
   $('#cAuto').onclick=()=>{autofill(true);changed();renderAll()};
+  $('#otSave').onclick=()=>{const T={validity:$('#otVal').value.trim(),payment:$('#otPay').value.trim(),incoterms:$('#otInc').value.trim()};try{localStorage.setItem('mva_terms',JSON.stringify(T))}catch(e){toast('Не удалось сохранить в браузере')}saveSharedTerms(T);autofill(true);changed();renderAll();toast('Условия сохранены')};
   $('#cHide').onchange=e=>{S.client.hideMaker=e.target.checked;if(e.target.checked&&!S.client.hideNames)S.client.hideNames=makerNames().join(', ');changed();renderAll()};
   {const hn=$('#cHideN');if(hn)hn.onchange=e=>{S.client.hideNames=e.target.value;changed();renderAll()}}
   if($('#cCodes'))$('#cCodes').onclick=()=>run('ИИ описывает коды привода',(s,p)=>genCodes(s,p));
   $('#cDesc').onclick=()=>run('ИИ готовит описания',(s,p)=>genDescs(s,p));
-  $('#xCli').onclick=async()=>saveFile(`${S.clientLang==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}.xlsx`,await xlsxSafe(cliXlsxPretty,cliXlsx),'cli');
-  {const nm=`${S.clientLang==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}`;$('#pCli').onclick=()=>exportDoc('pdf',docOffer(),nm,'cli');$('#wCli').onclick=()=>exportDoc('docx',docOffer(),nm,'cli')}
+  {const sv=$('#verSave');if(sv)sv.onclick=()=>{snapVersion(($('#verLbl').value||'').trim());verA=S.versions[S.versions.length-1].id;verB='cur';changed();renderAll();toast('Версия сохранена')};
+   m.querySelectorAll('[data-verdel]').forEach(b=>b.onclick=()=>{if(!confirm('Удалить эту версию?'))return;S.versions=S.versions.filter(v=>v.id!==b.dataset.verdel);changed();renderAll()});
+   const sa=$('#verA'),sb=$('#verB');if(sa)sa.onchange=e=>{verA=e.target.value;renderAll()};if(sb)sb.onchange=e=>{verB=e.target.value;renderAll()};
+   const nmv=`versii_${safeName(S.name)}`;
+   const pv=$('#pVer');if(pv){pv.onclick=()=>exportDoc('pdf',docVerDiff(verGet(verA),verGet(verB)),nmv,'cli');$('#wVer').onclick=()=>exportDoc('docx',docVerDiff(verGet(verA),verGet(verB)),nmv,'cli')}}
+  $('#xCli').onclick=async()=>leakOK()&&saveFile(`${S.clientLang==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}.xlsx`,await xlsxSafe(cliXlsxPretty,cliXlsx),'cli');
+  {const nm=`${S.clientLang==='uk'?'propozytsiia':'predlozhenie'}_${safeName(S.name)}`;$('#pCli').onclick=()=>leakOK()&&exportDoc('pdf',docOffer(),nm,'cli');$('#wCli').onclick=()=>leakOK()&&exportDoc('docx',docOffer(),nm,'cli')}
   $('#cCopy').onclick=()=>copyText(cliText());
 }
 
