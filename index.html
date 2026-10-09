@@ -954,7 +954,12 @@ function supMeta(r){
 }
 const partKind=p=>hasAct(p.lines)?'Привод':'Арматура';
 const partLabel=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+': '+(supOn()?(p.o.supplier||'')+(a?' — ':''):'')+a+' ('+(p.o.currency||'')+')'};
-const docSubs=r=>r.ch&&r.ch.comp?r.ch.parts.map(p=>['','   ↳ '+partLabel(p),'',supOn()?p.o.supplier:'',fmt(p.cur)+' '+(p.o.currency||''),fmt(p.eur),'','','','']):[];
+const partLabelX=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+(a?': '+a:'')+' ('+(p.o.currency||'')+')'};
+const calcSups=()=>{const m=new Map();S.req.items.forEach(it=>{const r=rowInfo(it);chParts(r.ch).forEach(p=>m.set(p.o.id,p.o))});return[...m.values()]};
+const calcTitle=()=>{const u=calcSups();return S.name+(u.length?'  ·  Поставщик: '+u.map(o=>(o.supplier||'')+(o.number?' (оферта №'+o.number+')':'')).join('; '):'')};
+const calcDescMap=()=>{const m={};cliRows().forEach(x=>{m[x.no]=x.desc});return m};
+const calcFileBase=()=>{const u=calcSups().map(o=>String(o.supplier||'').trim().split(/[\s,.]+/)[0]).filter(x=>x.length>=2),base=safeName(S.name),add=[...new Set(u)].filter(n=>!base.toLowerCase().includes(safeName(n).toLowerCase()));return 'kalkulator_'+base+(add.length?'_'+add.map(safeName).join('_'):'')};
+const docSubs=r=>r.ch&&r.ch.comp?r.ch.parts.map(p=>['','   ↳ '+partLabelX(p),'',fmt(p.cur)+' '+(p.o.currency||''),fmt(p.eur),'','','','']):[];
 function compRows(r){
   if(!(r.ch&&r.ch.comp))return'';
   return r.ch.parts.map(p=>`<tr class="subrow"><td></td><td colspan="2" class="hint" style="padding-left:18px">↳ <b>${partKind(p)}</b>${p.lines.some(l=>l.article)?': '+esc([...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ')):''}</td><td class="hint">${supOn()?esc(p.o.supplier):''}</td><td class="num co">${fmt(p.cur)} ${esc(p.o.currency||'')}</td><td class="num co">${fmt(p.eur)}</td><td colspan="4"></td></tr>`).join('')+`<tr class="subrow"><td></td><td colspan="4" class="hint" style="text-align:right">Сумма комплекта, EUR/ед:</td><td class="num co"><b>${fmt(r.cost)}</b></td><td colspan="4"></td></tr>`;
@@ -1028,13 +1033,13 @@ function totals(){
   return{cost:c,sale:s,margin:s-c,pct:s?(s-c)/s*100:0,miss};
 }
 function calcXlsx(){
-  const rows=S.req.items.map(rowInfo);
-  const A=[['Kalkulator ofertowy MVA'],[S.name,'','','','','','','','','Курс PLN/EUR'],['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка',S.rate]];
+  const rows=S.req.items.map(rowInfo),CD=calcDescMap();
+  const A=[['Kalkulator ofertowy MVA'],[calcTitle(),'','','','','','','','','Курс PLN/EUR'],['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка',S.rate]];
   const ws=XLSX.utils.aoa_to_sheet(A);
   let r=4;const first=r;
   rows.forEach(x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
-    ws['A'+r]={t:'s',v:it.no};ws['B'+r]={t:'s',v:(it.name+(it.params?', '+it.params:''))+(o&&supOn()?'  [поставщик: '+chSupFull(x.ch)+']':'')};
+    ws['A'+r]={t:'s',v:it.no};ws['B'+r]={t:'s',v:CD[it.no]||(it.name+(it.params?', '+it.params:''))};
     ws['C'+r]={t:'n',v:x.q};
     if(x.ch){
       if(x.ch.comp){ws['G'+r]={t:'n',f:`SUM(G${r+1}:G${r+x.ch.parts.length})`}}
@@ -1045,7 +1050,7 @@ function calcXlsx(){
     }else{ws['D'+r]={t:'s',v:'нет цены'}}
     r++;
     if(x.ch&&x.ch.comp)x.ch.parts.forEach(p=>{const c2=p.o.currency||'';
-      ws['B'+r]={t:'s',v:'     ↳ '+partLabel(p)};ws['F'+r]={t:'n',v:p.cur};
+      ws['B'+r]={t:'s',v:'     ↳ '+partLabelX(p)};ws['F'+r]={t:'n',v:p.cur};
       ws['G'+r]=c2==='PLN'?{t:'n',f:`F${r}/$J$3`}:c2==='EUR'?{t:'n',f:`F${r}`}:{t:'n',v:Math.round(p.eur*100)/100};r++});
   });
   const last=r-1;
@@ -1242,13 +1247,13 @@ async function cliXlsxPretty(){
   return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 async function calcXlsxPretty(){
-  const EJ=await loadExcelJS();const rows=S.req.items.map(rowInfo);
+  const EJ=await loadExcelJS();const rows=S.req.items.map(rowInfo),CD=calcDescMap();
   const wb=new EJ.Workbook();wb.creator='MVA Industries';
   const ws=wb.addWorksheet('Kalkulator ofertowy MVA',{views:[{state:'frozen',ySplit:3,showGridLines:false}],pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}});
   ws.columns=[{width:5},{width:70},{width:8},{width:13},{width:14},{width:13},{width:15},{width:17},{width:14},{width:14}];
   const ft=(o={})=>Object.assign({name:XF,size:10},o);
   ws.mergeCells('A1:J1');const a1=ws.getCell('A1');a1.value='Kalkulator ofertowy MVA';a1.font=ft({size:15,bold:true,color:{argb:'FFFFFFFF'}});a1.fill=fillA(NAVY);a1.alignment={vertical:'middle',indent:1};ws.getRow(1).height=28;
-  ws.mergeCells('A2:H2');const a2=ws.getCell('A2');a2.value=S.name;a2.font=ft({bold:true});
+  ws.mergeCells('A2:H2');const a2=ws.getCell('A2');a2.value=calcTitle();a2.font=ft({bold:true});
   ws.getCell('I2').value='Курс PLN/EUR';ws.getCell('I2').font=ft({bold:true,size:9});ws.getCell('I2').alignment={horizontal:'right'};
   const rt=ws.getCell('J2');rt.value=S.rate;rt.numFmt='0.0000';rt.font=ft({bold:true,color:{argb:'FF0000FF'}});rt.fill=fillA('FFFFFF99');rt.border=bdr();
   const hd=['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка'];
@@ -1258,7 +1263,7 @@ async function calcXlsxPretty(){
   rows.forEach(x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
     const set=(col,v,fmt,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fmt)c.numFmt=fmt;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
-    set('A',it.no,null,null,'center');set('B',(it.name+(it.params?', '+it.params:''))+(o&&supOn()?'  [поставщик: '+chSupFull(x.ch)+']':''),null,null,'left');set('C',x.q,'0.##',null,'center');
+    set('A',it.no,null,null,'center');set('B',CD[it.no]||(it.name+(it.params?', '+it.params:'')),null,null,'left');set('C',x.q,'0.##',null,'center');
     if(x.ch){
       if(x.ch.comp){set('F','','#,##0.00','FFFCE4E4');set('G',{formula:`SUM(G${r+1}:G${r+x.ch.parts.length})`,result:x.cost},'#,##0.00','FFFCE4E4')}
       else if(cur==='PLN'){set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',{formula:`F${r}/$J$2`,result:x.cost},'#,##0.00','FFFCE4E4')}
@@ -1271,7 +1276,7 @@ async function calcXlsxPretty(){
     ws.getRow(r).height=Math.max(22,14*linesEst(ws.getCell('B'+r).value,76)+6);r++;
     if(x.ch&&x.ch.comp)x.ch.parts.forEach(p=>{const c2=p.o.currency||'',GR='FFF2F2F2';
       ['A','C','D','E','H','I'].forEach(c=>set(c,'',null,GR));
-      set('B','     ↳ '+partLabel(p),null,GR,'left');ws.getCell('B'+r).font=ft({italic:true,color:{argb:'FF555555'}});
+      set('B','     ↳ '+partLabelX(p),null,GR,'left');ws.getCell('B'+r).font=ft({italic:true,color:{argb:'FF555555'}});
       set('F',p.cur,'#,##0.00',GR);
       if(c2==='PLN')set('G',{formula:`F${r}/$J$2`,result:p.eur},'#,##0.00',GR);else if(c2==='EUR')set('G',{formula:`F${r}`,result:p.eur},'#,##0.00',GR);else set('G',Math.round(p.eur*100)/100,'#,##0.00',GR);
       r++});});
@@ -1307,10 +1312,10 @@ function docOffer(){
   return{title:L.title+(c.number?' № '+c.number:''),meta:[[L.date,dRuF(c.date)],[L.to,c.name],[L.from,fromTxt()]].filter(x=>x[1]),blocks,landscape:false};
 }
 function docCalc(){
-  const rows=S.req.items.map(rowInfo),t=totals(),cu=saleCur();
-  return{title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)+(S.fxAuto!==false?' (НБП'+(S.rateDate?' '+S.rateDate:'')+')':' (задан вручную)')],['Наценка по умолчанию','×'+S.markup]],landscape:true,
-   blocks:[{t:'table',head:['№','Позиция','Кол-во','Поставщик','Цена пост.','EUR/ед','Наценка ×','Клиенту/ед, EUR','Сумма клиенту, EUR','Маржа %'],w:[4,30,6,17,10,8,7,10,11,7],al:['c','l','c','l','r','r','c','r','r','r'],
-    rows:rows.flatMap(r=>[[r.it.no,r.it.name+(r.it.params?', '+r.it.params:''),fmt(r.q,r.q%1?2:0),r.ch?chSupFull(r.ch):'',chPriceS(r.ch),fmt(r.cost),'×'+r.markup,fmt(r.sale),fmt(r.saleT),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]),total:['Итого, EUR',fmt(t.sale)]},
+  const rows=S.req.items.map(rowInfo),t=totals(),cu=saleCur(),CD=calcDescMap(),sups=calcSups();
+  return{title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)+(S.fxAuto!==false?' (НБП'+(S.rateDate?' '+S.rateDate:'')+')':' (задан вручную)')],['Наценка по умолчанию','×'+S.markup],...(sups.length?[['Поставщик',sups.map(o=>(o.supplier||'')+(o.number?' (оферта №'+o.number+')':'')).join('; ')]]:[])],landscape:true,
+   blocks:[{t:'table',head:['№','Позиция','Кол-во','Цена пост.','EUR/ед','Наценка ×','Клиенту/ед, EUR','Сумма клиенту, EUR','Маржа %'],w:[4,47,6,10,8,7,10,11,7],al:['c','l','c','r','r','c','r','r','r'],
+    rows:rows.flatMap(r=>[[r.it.no,CD[r.it.no]||(r.it.name+(r.it.params?', '+r.it.params:'')),fmt(r.q,r.q%1?2:0),chPriceS(r.ch),fmt(r.cost),'×'+r.markup,fmt(r.sale),fmt(r.saleT),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]),total:['Итого, EUR',fmt(t.sale)]},
     {t:'kv',items:[['Себестоимость, EUR',fmt(t.cost)],['Цена клиенту, EUR',fmt(t.sale)],['Маржа, EUR',fmt(t.margin)],['Маржа от цены клиенту',fmt(t.pct,1)+'%'],...(saleCur()!=='EUR'?[['Цена клиенту, '+cu,fmt(cliTotal(cliRows()))]]:[])].concat(t.miss?[['Позиций без цены',String(t.miss)]]:[])},
     {t:'p',text:'Внутренний документ. Содержит маржу и курс, клиенту не отправлять.',note:true}]};
 }
@@ -1867,8 +1872,8 @@ function vCalc(m){
     S.client.auto=false;S.ai=null;changed();renderAll();toast(n?'Комплектов собрано: '+n:'Нет позиций, где есть цены в обеих офертах (проверьте привязку строк на вкладке «Предложения»)')};
    const ai2=$('#cbAi');if(ai2)ai2.onclick=()=>{const A=$('#cbA').value,B=$('#cbB').value,P=$('#cbPos').value;run('ИИ привязывает приводы',(s,p)=>mapActuators(B,A,P,s,p))};
    const cl=$('#cbClr');if(cl)cl.onclick=()=>{Object.values(S.rows).forEach(r=>{if(r)delete r.add});S.client.auto=false;S.ai=null;changed();renderAll()}}
-  $('#xCalc').onclick=async()=>saveFile(`kalkulator_${safeName(S.name)}.xlsx`,await xlsxSafe(calcXlsxPretty,calcXlsx),'calc');
-  $('#pCalc').onclick=()=>exportDoc('pdf',docCalc(),`kalkulator_${safeName(S.name)}`,'calc');$('#wCalc').onclick=()=>exportDoc('docx',docCalc(),`kalkulator_${safeName(S.name)}`,'calc');
+  $('#xCalc').onclick=async()=>saveFile(`${calcFileBase()}.xlsx`,await xlsxSafe(calcXlsxPretty,calcXlsx),'calc');
+  $('#pCalc').onclick=()=>exportDoc('pdf',docCalc(),calcFileBase(),'calc');$('#wCalc').onclick=()=>exportDoc('docx',docCalc(),calcFileBase(),'calc');
   $('#resetMk').onclick=()=>{Object.values(S.rows).forEach(r=>{r.markup=null;r.qty=null});changed();renderAll()};
 }
 
