@@ -163,7 +163,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <h3>Первый запуск (один раз)</h3>
   <ol>
     <li>Откройте сайт приложения в <b>Chrome или Edge</b> на компьютере: https://artsembaltrukevich-source.github.io/MVA/. Можно установить как приложение (значок «Установить» в адресной строке).</li>
-    <li>Нажмите <b>«Настройки ИИ»</b>. Без платного ключа выберите <b>«Без ключа: вручную через чат ИИ»</b> и нажмите «Сохранить». Если есть ключ, выберите сервис и вставьте ключ: тогда разбор идёт автоматически.</li>
+    <li>Нажмите <b>«Настройки ИИ»</b> и <b>«Работать без ключа (ручной режим)»</b>. Дальше все шаги с ИИ идут через чат Claude или ChatGPT. Платный ключ API не нужен.</li>
     <li>Нажмите <b>«Папка проектов»</b>, выберите общую папку и разрешите доступ. Для каждого проекта в ней создаются подпапки: «1 Запрос клиента», «2 Предложения поставщиков», «3 Калькулятор (внутренний)», «4 Предложение клиенту», «5 Отчёты».</li>
     <li>Вверху выберите <b>язык клиента: RU или UK</b>. Все файлы (калькулятор, предложение, отчёт о соответствии) будут на этом языке.</li>
   </ol>
@@ -173,23 +173,23 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <p>Там, где нужен ИИ, приложение само составляет готовый запрос (промт). Вам нужно только перенести его в любой чат ИИ и вернуть ответ:</p>
   <ol class="cyc">
     <li>Нажмите кнопку шага (названа в каждой вкладке ниже). Откроется окно <b>«Запрос к ИИ»</b>.</li>
-    <li>Нажмите <b>«Копировать запрос»</b>.</li>
-    <li>Откройте чат <b>ChatGPT, Claude, Gemini</b> или любой другой, вставьте запрос и отправьте. Если ответ длинный и чат предлагает файл .json, откройте его.</li>
-    <li>Скопируйте ответ ИИ <b>целиком</b> (от первой { до последней }, без своих правок).</li>
-    <li>Вернитесь в приложение, вставьте в поле <b>«Ответ ИИ»</b> и нажмите <b>«Применить ответ»</b>. Данные сразу появятся в таблице.</li>
+    <li>Нажмите <b>«Копировать и открыть Claude»</b> (или <b>«…ChatGPT»</b>): запрос копируется, чат открывается в новой вкладке.</li>
+    <li>В чате нажмите <b>Ctrl+V</b> и отправьте. Файл оферты или запроса приложите к сообщению в чате.</li>
+    <li>Скопируйте ответ ИИ <b>целиком</b> (кнопка «Копировать» под ответом в чате).</li>
+    <li>Вернитесь в приложение: когда вкладка снова активна, ответ из буфера подставляется сам. Нажмите <b>«Вставить ответ из буфера и применить»</b>. Если браузер не дал читать буфер, вставьте ответ в поле «Ответ ИИ» вручную и нажмите «Применить ответ».</li>
     <li>Если ИИ ответил с ошибкой или оборвал ответ: напишите в чате «продолжи JSON с места обрыва», дополните ответ и вставьте снова. Нажатие «Отмена» ничего не меняет.</li>
   </ol>
   <p class="hint">Файлы-вложения (PDF, Excel, фото запроса или оферты) в ручном режиме тоже прикладываются в чат ИИ: для сканов и фото попросите ИИ сначала дословно переписать текст, затем вставьте этот текст в поле приложения и запустите шаг.</p>
   <p class="hint">С ключом API окно не появляется: всё то же самое происходит автоматически.</p>
 
   <h3>Каждая заявка: пошагово</h3>
-  <p><span class="tabname">1. Запрос</span> (2 шага ИИ)</p>
+  <p><span class="tabname">1. Запрос</span> (1 цикл ИИ)</p>
   <ol>
     <li>Нажмите «Новый» и впишите название проекта (например, «краны шаровые BROEN AH — клиент»).</li>
     <li>Перетащите файл запроса клиента (Excel, Word, PDF) в рамку или вставьте текст запроса в поле.</li>
-    <li><b>ИИ-шаг 1: «Разобрать запрос».</b> Копируете запрос → вставляете в чат ИИ → ответ JSON вставляете обратно → «Применить ответ». Получаете таблицу позиций (номер, название, DN, PN, количество, параметры).</li>
+    <li><b>ИИ-шаг 1: «Разобрать запрос».</b> Копируете запрос → вставляете в чат ИИ → ответ JSON вставляете обратно → «Применить ответ». Получаете таблицу позиций (номер, название, DN, PN, количество, параметры) и сразу перевод на английский и польский (галочка «сразу перевести на EN и PL» включена по умолчанию).</li>
     <li>Проверьте таблицу позиций: количество, DN, PN, названия. Ошибки правьте прямо в ячейках. Если приложение сообщило о пропущенных номерах позиций, сверьтесь с исходным запросом.</li>
-    <li><b>ИИ-шаг 2: «Перевести на EN и PL».</b> Тот же цикл: запрос → чат ИИ → JSON → «Применить ответ». Получаете перевод позиций и текст письма. Нажмите «Копировать письмо», вставьте в почту, приложите таблицу .xlsx. Отправляете вы сами.</li>
+    <li>Письма поставщикам на EN и PL уже готовы ниже. «Копировать письмо», вставьте в почту, приложите таблицу .xlsx. Отправляете вы сами. Отдельный шаг <b>«Перевести на EN и PL»</b> нужен только если вы убрали галочку или потом изменили позиции.</li>
   </ol>
 
   <p><span class="tabname">2. Предложения</span> (когда пришли ответы поставщиков)</p>
@@ -205,7 +205,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <li>Курс: выберите режим «Автоматически (НБП на сегодня)» или «Вручную (мой курс)». Под курсом приложение показывает сверку с НБП, банками и ЕЦБ.</li>
     <li>Расчёт идёт без ИИ. Для каждой позиции выберите поставщика (★ — самый дешёвый), при необходимости измените наценку или количество.</li>
     <li><b>Клапан + привод от разных поставщиков:</b> раскройте блок «Комплекты». Выберите оферту арматуры и оферту привода. Кнопка «Собрать комплекты…» складывает цены. <b>ИИ-шаг 4: «ИИ: привязать приводы к позициям»</b>: впишите номера позиций клиента (например 13-17), цикл запрос → чат ИИ → JSON → «Применить ответ» распределит строки привода по клапанам (по F10/F14/F16, SQ, DN/PN). Результат проверьте.</li>
-    <li><b>ИИ-шаг 5: «Перевести описания оферт»</b> (жёлтая подсказка вверху, если описания остались на языке поставщика): тот же цикл, ответ JSON с переводами на RU или UK.</li>
+    <li><b>ИИ-шаг 5 (по необходимости): «Перевести описания оферт»</b> (жёлтая подсказка вверху, если описания остались на языке поставщика): тот же цикл, ответ JSON с переводами на RU или UK.</li>
     <li>В калькуляторе всегда видны данные поставщика. Файл содержит маржу и курс: <b>клиенту его не отправляйте</b>.</li>
   </ol>
 
@@ -226,7 +226,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <p><span class="tabname">6. Отчёт</span></p>
   <ol start="21">
     <li><b>ИИ-шаг 6: «Техническая сверка (ИИ)»</b>: цикл запрос → чат ИИ → JSON → «Применить ответ». Разберите таблицу расхождений, сначала «Критично», потом «Уточнить». Матрица соответствия показывает, что в оферте совпало с запросом, что отличается и что предложено как аналог.</li>
-    <li><b>ИИ-шаг 7: «Подготовить письмо»</b>: тот же цикл, на выходе черновик уточнений поставщику на польском; «Копировать письмо» и в почту.</li>
+    <li><b>ИИ-шаг 7 (по необходимости): «Подготовить письмо»</b>: тот же цикл, на выходе черновик уточнений поставщику на польском; «Копировать письмо» и в почту.</li>
   </ol>
 
   <p><span class="tabname">7. Версии и сравнение</span></p>
@@ -253,7 +253,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 
   <h3>Если что-то не работает</h3>
   <ul>
-    <li><b>«Не задан ключ»</b>: «Настройки ИИ», выберите ручной режим.</li>
+    <li><b>«Не задан ключ»</b>: «Настройки ИИ» → «Работать без ключа (ручной режим)». Ключ API не нужен; поле для него спрятано в «Дополнительно».</li>
     <li><b>В шапке «Папка не подключена»</b>: нажмите «Папка проектов» и разрешите доступ (на iPhone и в Safari папка не работает, файлы скачиваются обычным способом).</li>
     <li><b>Названия «MVA Заявки» или старый вид после обновления</b>: Ctrl+F5.</li>
     <li><b>Проект пропал из списка</b>: проверьте, что подключена та же папка. Резервная копия всех проектов: «Настройки ИИ» → «Скачать все проекты».</li>
@@ -261,9 +261,10 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 </dialog>
 <dialog id="dlg" aria-label="Настройки ИИ">
   <h2>Настройки ИИ</h2>
-  <p class="sub">Выберите сервис и вставьте свой API-ключ. Ключ хранится только в этом браузере и отправляется только выбранному сервису. На чужом или общем компьютере ключ не сохраняйте.</p>
+  <p class="sub">Работаем без ключа: запросы вы переносите в чат Claude или ChatGPT. Ключ API нужен только для полной автоматики (хранится лишь в этом браузере).</p>
   <div class="row2" style="margin-bottom:10px"><button class="btn pri" id="sManual" type="button">Работать без ключа (ручной режим)</button></div>
   <p class="hint">Ручной режим: приложение готовит запрос, вы вставляете его в любой чат ИИ (ChatGPT, Claude, Gemini) и возвращаете ответ. Ключ не нужен.</p>
+  <details style="margin:10px 0"><summary><b>Дополнительно: свой API-ключ (платный, не обязателен)</b></summary>
   <div class="grid">
     <label class="f">Сервис<select id="sProv"></select></label>
     <label class="f" id="lModel">Модель<input type="text" id="sModel"></label>
@@ -272,6 +273,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <p class="hint" id="sHint"></p>
   <div class="grid" style="margin-top:8px"><label class="f" style="grid-column:1/-1">Сверка вторым ИИ (разбор запроса и оферт делают два ИИ, расхождения в цифрах подсвечиваются)<select id="sVer"></select></label></div>
   <p class="hint">Для сверки нужен ключ второго сервиса: введите его, выбрав этот сервис в списке выше, и нажмите «Сохранить». Запросов будет вдвое больше. В ручном режиме сверка недоступна.</p>
+  </details>
   <div class="row2"><button class="btn pri" id="sSave" type="button">Сохранить</button><button class="btn" id="sTest" type="button">Проверить связь</button><button class="btn" id="sClose" type="button">Закрыть</button></div>
   <p class="hint" id="sRes" role="status"></p>
   <h3 style="margin-top:14px">Резервная копия</h3>
@@ -280,11 +282,11 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 </dialog>
 <dialog id="mdlg" aria-label="Ручной режим">
   <h2>Запрос к ИИ</h2>
-  <p class="sub">1. Скопируйте запрос и вставьте в чат ИИ. 2. Дождитесь ответа. 3. Вставьте ответ ниже целиком.</p>
+  <p class="sub">1. Нажмите «Копировать и открыть Claude» или «…ChatGPT»: запрос окажется в буфере, чат откроется в новой вкладке. 2. В чате нажмите Ctrl+V и отправьте (файл оферты при необходимости приложите). 3. Скопируйте ответ целиком, вернитесь сюда и нажмите «Вставить ответ из буфера и применить».</p>
   <label class="f">Запрос <span id="mInfo"></span><textarea id="mPrompt" readonly style="min-height:110px"></textarea></label>
-  <div class="row2"><button class="btn pri" id="mCopy" type="button">Копировать запрос</button></div>
+  <div class="row2"><button class="btn pri" id="mClaude" type="button">Копировать и открыть Claude</button><button class="btn pri" id="mGpt" type="button">Копировать и открыть ChatGPT</button><button class="btn" id="mCopy" type="button">Только копировать</button></div>
   <label class="f">Ответ ИИ<textarea id="mAns" placeholder="Вставьте ответ сюда" style="min-height:150px"></textarea></label>
-  <div class="row2"><button class="btn pri" id="mOk" type="button">Применить ответ</button><button class="btn" id="mNo" type="button">Отмена</button></div>
+  <div class="row2"><button class="btn pri" id="mPaste" type="button">Вставить ответ из буфера и применить</button><button class="btn" id="mOk" type="button">Применить ответ</button><button class="btn" id="mNo" type="button">Отмена</button></div>
 </dialog>
 <div class="toast" id="toast" hidden role="status"></div>
 
@@ -496,11 +498,23 @@ function manualAsk(prompt,o){
     if(o.signal&&o.signal.aborted)return rej({code:'cancelled'});
     $('#mPrompt').value=prompt;$('#mAns').value='';$('#mInfo').textContent=prompt.length.toLocaleString('ru-RU')+' символов';
     if(o.onProg)o.onProg('вставьте ответ ИИ');
-    const cleanup=()=>{$('#mOk').onclick=null;$('#mNo').onclick=null;d.oncancel=null;if(o.signal)o.signal.removeEventListener('abort',cancel);if(d.close)d.close();else d.removeAttribute('open')};
+    let onFocus=()=>{};
+    const cleanup=()=>{window.removeEventListener('focus',onFocus);$('#mOk').onclick=null;$('#mNo').onclick=null;d.oncancel=null;if(o.signal)o.signal.removeEventListener('abort',cancel);if(d.close)d.close();else d.removeAttribute('open')};
     const cancel=()=>{cleanup();rej({code:'cancelled'})};
     $('#mOk').onclick=()=>{const t=$('#mAns').value.trim();if(!t){toast('Вставьте ответ ИИ');return}cleanup();res({text:t,cut:false})};
     $('#mNo').onclick=cancel;d.oncancel=e=>{e.preventDefault();cancel()};
     $('#mCopy').onclick=()=>copyText(prompt);
+    const openChat=u=>{try{window.open(u,'_blank','noopener')}catch(e){}copyText(prompt)};
+    $('#mClaude').onclick=()=>openChat('https://claude.ai/new');
+    $('#mGpt').onclick=()=>openChat('https://chatgpt.com/');
+    const fromClip=async auto=>{
+      try{const t=((await navigator.clipboard.readText())||'').trim();
+        if(!t||t===prompt.trim()||t.length<12){if(!auto)toast('В буфере нет ответа ИИ. Скопируйте ответ в чате и повторите');return false}
+        $('#mAns').value=t;return true}
+      catch(e){if(!auto)toast('Браузер не дал прочитать буфер: вставьте ответ в поле вручную (Ctrl+V) и нажмите «Применить ответ»');return false}};
+    $('#mPaste').onclick=async()=>{if(await fromClip(false))$('#mOk').click()};
+    onFocus=async()=>{if(!$('#mAns').value.trim()&&await fromClip(true))toast('Ответ найден в буфере. Проверьте и нажмите «Применить ответ»')};
+    window.addEventListener('focus',onFocus);
     if(o.signal)o.signal.addEventListener('abort',cancel);
     if(d.showModal)d.showModal();else d.setAttribute('open','');
   });
@@ -843,6 +857,8 @@ function diffReq(A,B){
   return out;
 }
 
+const trWithParse=()=>{try{return localStorage.getItem('mva_trwp')!=='0'}catch(e){return true}};
+const TR_EXTRA='\n\nДОПОЛНИТЕЛЬНО: в тот же JSON добавь поле "tr": {"en":{"title":string,"required_delivery":string,"items":[{"no":string,"name":string,"params":string,"unit":string}]},"pl":{то же на польском}}. Это переводы позиций для письма поставщикам: items в том же порядке и того же количества, что и основной список. Используй точную профессиональную терминологию промышленной арматуры, насосов, приводов и КИПиА; артикулы, коды моделей, стандарты (DN, PN, EN, ISO, ATEX), числа и единицы измерения оставляй без изменений; ничего не добавляй и не пропускай; не упоминай страну клиента и место назначения.';
 async function parseRequest(signal,prog){
   const p=`Ты помощник инженера по закупкам промышленной арматуры, насосов и автоматики. Ниже текст запроса клиента (русский или украинский; может быть выгрузка таблицы в CSV). Извлеки позиции.
 Верни только JSON: {"language":"ru"|"uk"|"other","title":string,"required_delivery_text":string|null,"required_delivery_days":number|null,"conditions":string|null,"items":[{"no":string,"name":string,"qty":number|null,"unit":string|null,"params":string}]}
@@ -850,7 +866,7 @@ async function parseRequest(signal,prog){
 
 ТЕКСТ ЗАПРОСА:
 ${clip(S.reqText)}`;
-  const both=await askBoth(p,signal,prog),r=both.a;
+  const both=await askBoth(p+(trWithParse()?TR_EXTRA:''),signal,prog),r=both.a;
   if(!r||!Array.isArray(r.items)||!r.items.length)throw{message:'Позиции в запросе не найдены. Проверьте текст.'};
   S.req={title:r.title||'',requiredText:r.required_delivery_text||'',requiredDays:num(r.required_delivery_days),conditions:r.conditions||'',items:r.items.map((i,k)=>({no:String(i.no||k+1),name:String(i.name||''),qty:num(i.qty),unit:i.unit||'',params:i.params||''}))};
   if(r.language==='uk'||r.language==='ru'){S.clientLang=r.language;S.req.srcLang=r.language}
@@ -859,6 +875,12 @@ ${clip(S.reqText)}`;
   if(S.req.verify&&S.req.verify.diffs.length)toast('Сверка двумя ИИ: расхождений '+S.req.verify.diffs.length+'. Смотрите «Отчёт».');
   if(S.name==='Новый проект'&&S.req.title)S.name=S.req.title.slice(0,80);
   S.tr={};S.ai=null;
+  if(r.tr&&typeof r.tr==='object'){
+    for(const lang of ['en','pl']){const t=r.tr[lang];
+      if(t&&Array.isArray(t.items)&&t.items.length===S.req.items.length)
+        S.tr[lang]={title:t.title||S.req.title||'',requiredDelivery:t.required_delivery||'',items:t.items.map((i,k)=>({no:String(i.no||S.req.items[k].no),name:i.name||'',params:i.params||'',unit:i.unit||''})),hash:itemsHash()}}
+    if(S.tr.en&&S.tr.pl)toast('Перевод на EN и PL получен в том же ответе');
+  }
 }
 const itemsHash=()=>JSON.stringify((S.req?S.req.items:[]).map(i=>[i.no,i.name,i.params,i.unit]))+(S.req?S.req.requiredText:'');
 async function translate(langs,signal,prog){
@@ -1787,7 +1809,7 @@ function vReq(m){
     <p class="sub">Загрузите запрос на русском или украинском (Word, Excel, PDF, скан или фото) или вставьте текст. Сканы и фото распознаются автоматически. Первый раз? Нажмите «Инструкция» вверху. ИИ выделит позиции, параметры и срок поставки. Результат можно править в таблице.</p>
     <div class="drop" id="drop1"><input type="file" id="f1" accept=".xlsx,.xls,.xlsm,.csv,.docx,.pdf,.txt,.jpg,.jpeg,.png,.webp,.gif,image/*" aria-label="Файл запроса"> <span class="hint">или перетащите файл сюда</span></div>
     <label class="f" style="margin-top:10px">Текст запроса<textarea id="reqText" placeholder="Вставьте текст запроса сюда">${esc(S.reqText)}</textarea></label>
-    <div class="row2"><button class="btn pri" id="doParse" type="button"${S.reqText.trim()?'':' disabled'}>Разобрать запрос</button>${!S.reqText&&!has?'<button class="btn" id="doDemo" type="button">Загрузить пример</button>':''}<span class="hint">Текстовые файлы читаются в браузере. Сканы и фото уходят в ИИ на распознавание.</span></div>
+    <div class="row2"><button class="btn pri" id="doParse" type="button"${S.reqText.trim()?'':' disabled'}>Разобрать запрос</button>${!S.reqText&&!has?'<button class="btn" id="doDemo" type="button">Загрузить пример</button>':''}<label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="trWithParse"${trWithParse()?' checked':''}> сразу перевести на EN и PL (один запрос вместо двух)</label><span class="hint">Текстовые файлы читаются в браузере. Сканы и фото уходят в ИИ на распознавание.</span></div>
   </section>
   ${!has?'<section class="card"><h2>Нет запроса?</h2><p class="sub">Если у вас сразу есть предложение поставщика, перейдите на вкладку «Предложения» и загрузите его. Позиции создадутся из предложения.</p><button class="btn" data-go="off" type="button">К предложениям</button></section>':''}
   ${has?`<section class="card">
@@ -1816,6 +1838,7 @@ function vReq(m){
   $('#f1').onchange=e=>pick(e.target.files[0]);
   dz.ondragover=e=>{e.preventDefault();dz.classList.add('over')};dz.ondragleave=()=>dz.classList.remove('over');dz.ondrop=e=>{e.preventDefault();dz.classList.remove('over');pick(e.dataTransfer.files[0])};
   $('#reqText').oninput=e=>{S.reqText=e.target.value;$('#doParse').disabled=!S.reqText.trim();changed()};
+  $('#trWithParse').onchange=e=>{try{localStorage.setItem('mva_trwp',e.target.checked?'1':'0')}catch(x){}};
   $('#doParse').onclick=()=>run('ИИ разбирает запрос',(s,p)=>parseRequest(s,p));
   const dm=$('#doDemo');if(dm)dm.onclick=demo;
   if(has){
