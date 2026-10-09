@@ -230,6 +230,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <li>Блок «От кого»: оставьте пустым или впишите свою компанию. Название производителя можно скрыть галочкой.</li>
     <li><b>Привод в оферте поставщика</b> приложение разделяет на три случая: «привод предложен», «прямо указано, что привода нет» (в КП ставится пометка «Привод в стоимость не входит») и «о приводе не сказано» (пометка не ставится, позиция попадает в замечания: уточните у поставщика). Если приложение определило неверно, в жёлтом блоке «Привод: проверьте позиции» (вкладки «Калькулятор» и «Оферта клиенту») выберите статус вручную. Аналоги помечаются, смотрите блок проверки аналогов.</li>
     <li>Перед выгрузкой приложение проверяет, нет ли в предложении названий поставщика, маржи или курса. Если нашло, предупредит.</li>
+    <li><b>Отклонения от запроса через ИИ.</b> В блоке «Отклонения» нажмите «Сравнить с запросом через ИИ» и выберите, каким ИИ (как в настройках, вручную через чат или другой по ключу). ИИ сравнит DN, PN, материал, присоединение, привод, количество и срок, заполнит статусы и комментарии на языке клиента. Комментарии с названием поставщика приложение не вставляет. Результат проверьте и поправьте в таблице.</li>
   </ol>
 
   <p><span class="tabname">5. Файлы по языкам</span></p>
@@ -649,7 +650,7 @@ function manualAsk(prompt,o){
   });
 }
 async function callAI(prompt,o){
-  o=o||{};const PV=o.prov||CFG.provider;
+  o=o||{};const PV=o.prov&&DEF[o.prov]?o.prov:CFG.provider;
   if(PV==='sample'){
     const sm=inClaude()?await window.claude.use('sample'):null;
     if(!sm)throw{message:'Встроенный Claude недоступен в этом окне. Выберите другой режим в «Настройках ИИ».'};
@@ -1701,7 +1702,8 @@ function clientDev(){
       if(r.sale==null)notes.push(D.noPrice)
     }
     const rw=rw0;const auto=notes.join('. ');
-    rows.push({no:it.no,name:(rw0.desc)||defDesc(it),req:it.qty==null?'—':f(it.qty)+' '+unit,off:offTxt,lead:leadTxt,status,auto,note:rw.cnote!=null?rw.cnote:auto});
+    if(rw0.cst&&DEVST.includes(rw0.cst)&&r.ch)status=rw0.cst;
+    rows.push({no:it.no,name:(rw0.desc)||defDesc(it),req:it.qty==null?'—':f(it.qty)+' '+unit,off:offTxt,lead:leadTxt,status,auto,note:rw.cnote!=null?rw.cnote:auto,ai:!!rw0.cst});
   });
   return rows;
 }
@@ -1884,6 +1886,44 @@ function checks(){
   if(RPT_SUP){const me='«'+RPT_SUP.supplier+'»',others=S.offers.filter(x=>x!==RPT_SUP).map(x=>'«'+x.supplier+'»');for(let i=out.length-1;i>=0;i--){const t=out[i].text;if(others.some(n=>t.includes(n)))out.splice(i,1)}}
   f.forEach(x=>add(x.severity==='critical'?'crit':x.severity==='clarify'?'ask':'info',String(x.item||'—'),'Техн.: '+(x.topic||''),`${x.requested?'Запрос: '+x.requested+'. ':''}${x.offered?'Оферта: '+x.offered+'. ':''}${x.action?'Что сделать: '+x.action:''}`.trim()));
   return out;
+}
+
+/* ---------- сравнение с запросом через ИИ (для отчёта «Отклонения» клиенту) ---------- */
+const DEVST=['ok','dev','none'];
+function devProvOpts(){
+  const cur=CFG.provider,o=[['','как в настройках: '+DEF[cur].short]];
+  if(cur!=='manual')o.push(['manual','вручную через чат (Claude, ChatGPT, другой)']);
+  ['anthropic','openai','gemini'].forEach(k=>{if(k!==cur&&keyOf(k))o.push([k,DEF[k].short+' (по ключу)'])});
+  if(inClaude()&&cur!=='sample')o.push(['sample',DEF.sample.short]);
+  return o;
+}
+async function aiDev(signal,prog,prov){
+  const D=CD[S.clientLang]||CD.ru,lang=S.clientLang==='uk'?'украинском':'русском';
+  const auto=Object.fromEntries(clientDev().map(x=>[x.no,x.auto]));
+  const data=S.req.items.map(it=>{const r=rowInfo(it);return{no:it.no,request:{name:it.name,params:it.params||'',qty:it.qty,unit:it.unit||''},offered:r.ch?{qty:r.q,lines:r.ch.lines.map(l=>({article:l.article,description:(S.clientLang==='uk'?l.dUk:l.dRu)||l.desc,qty:l.qty,unit:l.unit,lead:l.leadDays!=null?l.leadDays+' дн.':(l.lead||'')}))}:null,auto_note:auto[it.no]||''}});
+  const p=`Ты инженер по промышленной арматуре, приводам, насосам и КИПиА. Сравни каждую позицию запроса клиента с тем, что мы предлагаем, и найди отклонения. Результат пойдёт клиенту.
+Верни только JSON: {"items":[{"no":string,"status":"ok"|"dev"|"none","note":string}]}
+status: ok = предложение соответствует запросу; dev = отличается (количество, единица, срок, DN, PN, материал, присоединение, тип, модель, комплектность, привод, взрывозащита, напряжение и т.п.); none = позиция не предложена (offered = null).
+note: на ${lang} языке, коротко и по делу: что запрошено и что предложено, формулировка деловая и точная техническими терминами. Для ok оставь пустую строку.
+Правила: сравнивай только то, что есть в данных, ничего не выдумывай и не используй память о каталогах. Если параметр запроса в предложении не указан, это не отклонение, а «не подтверждено в предложении»: отметь dev с таким комментарием только для существенных параметров (DN, PN, материал, привод, ATEX). Никогда не упоминай поставщиков, производителей-источники закупки, цены, наценку, себестоимость и курсы. Поле auto_note: автоматически найденные отклонения по количеству, единице, сроку и DN; учти их и не противоречь им. Номера no верни как есть, по одной записи на каждую позицию.
+Срок поставки, требуемый клиентом: ${S.req.requiredDays!=null?S.req.requiredDays+' дн.':'не указан'}.
+ДАННЫЕ: ${JSON.stringify(data)}`;
+  const r=await ai(p,signal,prog,true,prov||undefined);
+  const arr=Array.isArray(r&&r.items)?r.items:Array.isArray(r)?r:null;
+  if(!arr)throw{code:'invalid_json'};
+  const names=S.offers.map(o=>String(o.supplier||'').trim().split(/[\s,.]+/)[0]).filter(x=>x.length>=4).map(x=>x.toLowerCase());
+  let n=0,skipped=0;
+  arr.forEach(x=>{
+    const no=String(x&&x.no!=null?x.no:'');if(!S.req.items.some(i=>i.no===no))return;
+    const st=DEVST.includes(x.status)?x.status:null;let note=String(x.note||'').trim();
+    if(note&&names.some(w=>note.toLowerCase().includes(w))){note='';skipped++}
+    const rw=S.rows[no]=S.rows[no]||{};
+    if(st)rw.cst=st;
+    rw.cnote=st==='ok'?'':(note||null);
+    n++;
+  });
+  S.devAi={at:Date.now(),prov:prov||CFG.provider,n,skipped};
+  toast('ИИ сравнил позиций: '+n+(skipped?'. В '+skipped+' комментариях было название поставщика, они не вставлены, оставлен автотекст':''));
 }
 async function techCheck(signal,prog){
   const data=S.req.items.map(it=>{const r=rowInfo(it);return{no:it.no,request:{name:it.name,params:it.params,qty:it.qty,unit:it.unit},offers:cands(it.no).filter(x=>x.lines).map(x=>({supplier:x.o.supplier,chosen:r.ch&&r.ch.o===x.o,lines:x.lines.map(l=>({article:l.article,description:l.desc,qty:l.qty,unit:l.unit,note:l.note}))}))}});
@@ -2439,6 +2479,7 @@ function vCli(m){
     <h2>${(CD[S.clientLang]||CD.ru).title}</h2>
     <p class="sub">Отчёт для клиента: где предложение отличается от запроса (количество, единицы, срок, типоразмер). Здесь нет поставщиков, цен закупки и маржи. Комментарии можно править.</p>
     ${(()=>{const D=CD[S.clientLang]||CD.ru,rr=clientDev(),ST={ok:['ok',D.ok],dev:['crit',D.dev],none:['ask',D.none]};return`<div class="tw"><table class="xt"><thead><tr><th>${D.no}</th><th>${D.pos}</th><th>${D.req}</th><th>${D.off}</th><th>${D.lead}</th><th>${D.note}</th><th>${D.st}</th></tr></thead><tbody>${rr.map(x=>`<tr data-dno="${esc(x.no)}"><td>${esc(x.no)}</td><td style="text-align:left;min-width:180px">${esc(x.name)}</td><td class="num" style="text-align:center">${esc(x.req)}</td><td class="num" style="text-align:center">${esc(x.off)}</td><td style="text-align:center">${esc(x.lead)}</td><td><textarea data-cnote>${esc(x.note)}</textarea></td><td style="text-align:center"><span class="pill ${ST[x.status][0]}">${ST[x.status][1]}</span></td></tr>`).join('')}</tbody></table></div>`})()}
+    <div class="row2" style="align-items:center"><button class="btn" id="aiDev" type="button">Сравнить с запросом через ИИ</button><label class="hint" style="display:flex;gap:6px;align-items:center">ИИ<select id="aiDevProv" aria-label="Какой ИИ использовать">${devProvOpts().map(([v,l])=>`<option value="${v}"${(S.devProv||'')===v?' selected':''}>${esc(l)}</option>`).join('')}</select></label><span class="hint">${S.devAi?'Последнее сравнение ИИ: '+new Date(S.devAi.at).toLocaleString('ru-RU')+' ('+esc((DEF[S.devAi.prov]||{}).short||S.devAi.prov)+'). Результат можно править в таблице.':'ИИ проверит DN, PN, материал, присоединение, привод, комплектность, количество и срок и заполнит статусы и комментарии.'}</span></div>
     <div class="row2"><button class="btn pri" id="pDev" type="button">Скачать PDF</button><button class="btn" id="wDev" type="button" style="display:none" hidden>Word</button><button class="btn" id="rDev" type="button">Вернуть автотекст комментариев</button></div>
   </section>`;
   supAllBind();
@@ -2448,7 +2489,7 @@ function vCli(m){
   bind('#cName','name');bind('#cNum','number');bind('#cDate','date');bind('#cVal','validity');bind('#cDel','delivery');bind('#cPay','payment');bind('#cInc','incoterms');
   m.querySelectorAll('tr[data-no] [data-desc]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.no;S.rows[no]=Object.assign(S.rows[no]||{},{desc:e.target.value,descAi:false});changed()});
   m.querySelectorAll('tr[data-dno] [data-cnote]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.dno;S.rows[no]=Object.assign(S.rows[no]||{},{cnote:e.target.value});changed()});
-  {const nm=()=>`${S.clientLang==='uk'?'rozbizhnosti':'otkloneniya'}${calcFileBase().replace(/^kalkulator/,'')}_${LNAME(S.clientLang)}`;$('#pDev').onclick=()=>exportDoc('pdf',docClientDev(),nm(),'cli');$('#wDev').onclick=()=>exportDoc('docx',docClientDev(),nm(),'cli');$('#rDev').onclick=()=>{Object.values(S.rows).forEach(r=>{r.cnote=null});changed();renderAll()}}
+  {const nm=()=>`${S.clientLang==='uk'?'rozbizhnosti':'otkloneniya'}${calcFileBase().replace(/^kalkulator/,'')}_${LNAME(S.clientLang)}`;$('#pDev').onclick=()=>exportDoc('pdf',docClientDev(),nm(),'cli');$('#wDev').onclick=()=>exportDoc('docx',docClientDev(),nm(),'cli');$('#rDev').onclick=()=>{Object.values(S.rows).forEach(r=>{r.cnote=null;r.cst=null});S.devAi=null;changed();renderAll()};$('#aiDevProv').onchange=e=>{S.devProv=e.target.value;changed()};$('#aiDev').onclick=()=>run('ИИ сравнивает с запросом',(s,p)=>aiDev(s,p,$('#aiDevProv').value))}
   $('#cAuto').onclick=()=>{autofill(true);changed();renderAll()};
   $('#otSave').onclick=()=>{const T={validity:$('#otVal').value.trim(),payment:$('#otPay').value.trim(),incoterms:$('#otInc').value.trim()};try{localStorage.setItem('mva_terms',JSON.stringify(T))}catch(e){toast('Не удалось сохранить в браузере')}saveSharedTerms(T);autofill(true);changed();renderAll();toast('Условия сохранены')};
   $('#cHide').onchange=e=>{S.client.hideMaker=e.target.checked;if(e.target.checked&&!S.client.hideNames)S.client.hideNames=makerNames().join(', ');changed();renderAll()};
