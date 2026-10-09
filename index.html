@@ -559,6 +559,48 @@ async function ai(prompt,signal,onProg,json=true,prov){
 }
 const SUBS={req:'1 Запрос клиента',off:'2 Предложения поставщиков',calc:'3 Калькулятор (внутренний)',cli:'4 Предложение клиенту',rep:'5 Отчёты'};
 const defName=()=>S.name==='Новый проект';
+/* перевод названий и параметров позиций на язык клиента (например, когда позиции взяты из польской оферты) */
+async function translateItems(lang,signal,prog){
+  const L=lang==='uk'?'украинский':'русский';
+  const src=S.req.items.map(i=>({no:i.no,name:i.o_name!=null?i.o_name:i.name,params:i.o_params!=null?i.o_params:(i.params||''),unit:i.o_unit!=null?i.o_unit:(i.unit||'')}));
+  const p=`Ты технический переводчик-инженер по промышленной арматуре, приводам, насосам и КИПиА. Переведи названия, параметры и единицы измерения позиций коммерческого предложения на ${L} язык ПОЛНОСТЬЮ и технически точно, так, как это написал бы инженер в технической спецификации. В переводе не должно остаться слов на польском, английском или немецком языке, кроме артикулов, моделей и обозначений.
+Верни только JSON: {"items":[{"no":string,"name":string,"params":string,"unit":string,"doubt":string}]}
+Правила:
+1. Не изменяй и не переводи: артикулы, коды и обозначения моделей (AH-14C и т.п.), обозначения стандартов (DN, PN, EN, ISO, PN-EN ISO 12944-5, ATEX, API, ASME, RAL, C3.05), числа, десятичные знаки, знаки + − ±, температуры, давления, размеры, моменты, мощности, напряжения. Единицы переводи по принятой форме: µm → мкм, szt. → шт., kpl. → компл., op. → уп.; °C, mm, bar, MPa, kW, V, Nm не меняй.
+2. Используй устоявшуюся терминологию. Примеры: kurek kulowy → шаровой кран; zawór → клапан; zasuwa → задвижка; przepustnica → дисковый затвор; zawór zwrotny → обратный клапан; kołnierzowy → фланцевый; spawany → приварной; gwintowany → резьбовой; pełny przelot → полнопроходной; kula pływająca → плавающий шар; kula na czopach / trunnion → шар на цапфах; uszczelnienie miękkie (SOFT) → мягкое уплотнение седла; FIRE SAFE → огнестойкое исполнение (Fire Safe); zabezpieczenie antystatyczne → антистатическое исполнение; przekładnia → редуктор; chwyt → рукоятка; napęd → привод; medium → рабочая среда; malowanie 120µm → окраска 120 мкм; kolorystyka → цвет покрытия; szary → серый; PRZEKŁADNIA → редуктор. Для украинского аналогично (кран кульовий, фланцевий, редуктор, привід, робоче середовище).
+3. Сохрани структуру и порядок параметров, разделители («;», «,»). Ничего не добавляй, не сокращай, не обобщай и не пропускай. Номера (no) сохрани как есть.
+4. Если термин неоднозначен или ты не уверен в точном техническом эквиваленте, переведи наиболее вероятно и коротко опиши сомнение в поле doubt (какой термин и какой вариант выбран). Если сомнений нет, doubt пустая строка.
+5. Перед ответом проверь каждую позицию: все значения и обозначения совпадают с оригиналом, нет непереведённых слов, терминология техническая.
+items: ${JSON.stringify(src)}`;
+  const r=await ai(p,signal,prog);
+  if(!r||!Array.isArray(r.items))throw{message:'Перевод не получен'};
+  const by={};r.items.forEach(x=>{by[String(x.no)]=x});
+  S.req.items.forEach(i=>{const x=by[i.no];if(!x)return;if(i.o_name==null){i.o_name=i.name;i.o_params=i.params||'';i.o_unit=i.unit||''}
+    i.name=String(x.name||i.o_name);i.params=String(x.params!=null?x.params:i.o_params);i.unit=String(x.unit||i.o_unit);i.t_doubt=String(x.doubt||'')});
+  S.req.trLang=lang;S.clientLang=lang;if(S.req.srcLang==null)S.req.srcLang=S.req.fromOffer?'other':(lang==='uk'?'ru':'uk');
+}
+function dropAiDescs(){Object.keys(S.rows).forEach(k=>{const r=S.rows[k];if(r&&r.descAi){delete r.desc;delete r.descAi}})}
+/* выбор языка клиента: позиции переводятся автоматически */
+function setLang(l){
+  const prev=S.clientLang,q=S.req;S.clientLang=l;
+  if(q&&q.items&&q.items.length){
+    if(q.srcLang==null)q.srcLang=q.fromOffer?'other':prev;
+    if(l===q.srcLang){if(q.items.some(i=>i.o_name!=null)){restoreItems();dropAiDescs()}changed();renderAll();return}
+    if(q.trLang!==l){dropAiDescs();run('ИИ переводит позиции на '+(l==='uk'?'украинский':'русский'),(s,p)=>translateItems(l,s,p));return}
+  }
+  changed();renderAll();
+}
+function restoreItems(){
+  S.req.items.forEach(i=>{if(i.o_name!=null){i.name=i.o_name;i.params=i.o_params;i.unit=i.o_unit;delete i.o_name;delete i.o_params;delete i.o_unit;delete i.t_doubt}});
+  delete S.req.trLang;
+}
+const trBox=()=>{
+  if(!S.req||!S.req.items.length)return'';
+  const done=S.req.items.some(i=>i.o_name!=null),fo=!!S.req.fromOffer;
+  if(!done&&!fo)return'';
+  const b=(k,t,p)=>`<button class="btn${p?' pri':''}" type="button" data-trl="${k}">${t}</button>`;
+  return`<div class="${done?'row2':'warnbox'}" style="margin:8px 0">${done?`<span class="hint">Названия и параметры позиций переведены на ${S.req.trLang==='uk'?'украинский':'русский'}.</span>`:`<span class="hint">Позиции взяты из оферты поставщика и остались на его языке. Выберите язык клиента переключателем RU / UK вверху, и позиции переведутся автоматически (артикулы и коды не меняются). Либо нажмите:</span>`} ${b('ru','Перевести на RU',!done)} ${b('uk','Перевести на UK',false)}${done?' '+b('orig','Вернуть оригинал',false):''}${done&&S.req.items.some(i=>i.t_doubt)?`<div class="hint" style="margin-top:6px;flex-basis:100%"><b>Проверьте термины:</b> ${S.req.items.filter(i=>i.t_doubt).map(i=>esc(i.no+'. '+i.t_doubt)).join(' · ')}</div>`:''}</div>`;
+};
 function folderName(){if(!S.folder)S.folder=safeName(S.name);return S.folder}
 async function projDir(sub){
   const root=await dirH.getDirectoryHandle(folderName(),{create:true});
@@ -727,7 +769,7 @@ ${clip(S.reqText)}`;
   const both=await askBoth(p,signal,prog),r=both.a;
   if(!r||!Array.isArray(r.items)||!r.items.length)throw{message:'Позиции в запросе не найдены. Проверьте текст.'};
   S.req={title:r.title||'',requiredText:r.required_delivery_text||'',requiredDays:num(r.required_delivery_days),conditions:r.conditions||'',items:r.items.map((i,k)=>({no:String(i.no||k+1),name:String(i.name||''),qty:num(i.qty),unit:i.unit||'',params:i.params||''}))};
-  if(r.language==='uk'||r.language==='ru')S.clientLang=r.language;
+  if(r.language==='uk'||r.language==='ru'){S.clientLang=r.language;S.req.srcLang=r.language}
   S.req.verify=both.b?{by:both.by,diffs:diffReq(r,both.b)}:(both.note?{note:both.note,diffs:[]}:null);
   if(S.req.verify&&S.req.verify.diffs.length)toast('Сверка двумя ИИ: расхождений '+S.req.verify.diffs.length+'. Смотрите «Отчёт».');
   if(S.name==='Новый проект'&&S.req.title)S.name=S.req.title.slice(0,80);
@@ -891,7 +933,7 @@ async function genDescs(signal,prog){
 ДАННЫЕ: ${JSON.stringify(data)}`;
   const r=await ai(p,signal,prog);
   if(!r||!Array.isArray(r.items))throw{message:'Описания не получены'};
-  r.items.forEach(x=>{const k=String(x.no);S.rows[k]=Object.assign(S.rows[k]||{},{desc:String(x.desc||'')})});
+  r.items.forEach(x=>{const k=String(x.no);S.rows[k]=Object.assign(S.rows[k]||{},{desc:String(x.desc||''),descAi:true})});
 }
 function codeBlocks(){return S.req.items.map(it=>{const r=rowInfo(it);const ls=r.ch?r.ch.lines.filter(l=>l.equip&&l.equip.length):[];return ls.length?{no:it.no,name:it.name,qty:it.qty,lines:ls}:null}).filter(Boolean)}
 async function genCodes(signal,prog){
@@ -1450,6 +1492,7 @@ function vCalc(m){
   <section class="card">
     <h2>Калькулятор</h2>
     ${langSeg()}
+    ${trBox()}
     <p class="sub">Цена поставщика пересчитывается в EUR по курсу, затем умножается на наценку. По умолчанию выбран самый дешёвый поставщик по каждой позиции.</p>
     <div class="grid" style="max-width:520px;margin-bottom:12px">
       <label class="f">Курс, PLN за 1 EUR<input type="number" step="0.0001" id="rate" value="${S.rate}"></label>
@@ -1502,6 +1545,7 @@ function vCli(m){
   <section class="card">
     <h2>${L.title}</h2>
     ${langSeg()}
+    ${trBox()}
     <p class="sub">Версия для клиента: только цены за единицу и суммы в валюте предложения (${saleCur()}). Маржа, курс и поставщики здесь не показываются и в файл не попадают. Язык переключается кнопками RU / UK вверху.</p>
     <div class="grid" style="margin-bottom:12px">
       <label class="f">${L.to}<input type="text" id="cName" value="${esc(c.name)}"></label>
@@ -1530,7 +1574,7 @@ function vCli(m){
   </section>`;
   const bind=(id,k)=>{$(id).onchange=e=>{S.client[k]=e.target.value;changed();renderTabs()}};
   bind('#cName','name');bind('#cNum','number');bind('#cDate','date');bind('#cVal','validity');bind('#cDel','delivery');bind('#cPay','payment');bind('#cInc','incoterms');
-  m.querySelectorAll('tr[data-no] [data-desc]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.no;S.rows[no]=Object.assign(S.rows[no]||{},{desc:e.target.value});changed()});
+  m.querySelectorAll('tr[data-no] [data-desc]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.no;S.rows[no]=Object.assign(S.rows[no]||{},{desc:e.target.value,descAi:false});changed()});
   m.querySelectorAll('tr[data-dno] [data-cnote]').forEach(a=>a.onchange=e=>{const no=e.target.closest('tr').dataset.dno;S.rows[no]=Object.assign(S.rows[no]||{},{cnote:e.target.value});changed()});
   {const nm=`${S.clientLang==='uk'?'rozbizhnosti':'otkloneniya'}_${safeName(S.name)}`;$('#pDev').onclick=()=>exportDoc('pdf',docClientDev(),nm,'cli');$('#wDev').onclick=()=>exportDoc('docx',docClientDev(),nm,'cli');$('#rDev').onclick=()=>{Object.values(S.rows).forEach(r=>{r.cnote=null});changed();renderAll()}}
   $('#cAuto').onclick=()=>{autofill(true);changed();renderAll()};
@@ -1711,14 +1755,15 @@ function vInv(m){
 
 /* ---------- wiring ---------- */
 document.addEventListener('click',e=>{
-  const lg=e.target.closest('[data-lang]');if(lg){S.clientLang=lg.dataset.lang;changed();renderAll();return}
+  const lg=e.target.closest('[data-lang]');if(lg){setLang(lg.dataset.lang);return}
+  const tl=e.target.closest('[data-trl]');if(tl){const v=tl.dataset.trl;if(v==='orig'){restoreItems();changed();renderAll()}else run('ИИ переводит позиции',(s,p)=>translateItems(v,s,p));return}
   const t=e.target.closest('[data-tab]');if(t&&!ctl){tab=t.dataset.tab;delOffer=-1;renderAll();window.scrollTo(0,0);return}
   const g=e.target.closest('[data-go]');if(g){tab=g.dataset.go;renderAll();window.scrollTo(0,0)}
 });
 $('#stop').onclick=()=>{if(ctl)ctl.abort()};
 $('#pname').onchange=e=>{S.name=e.target.value||'Без названия';changed()};
-$('#lru').onclick=()=>{S.clientLang='ru';changed();renderAll()};
-$('#luk').onclick=()=>{S.clientLang='uk';changed();renderAll()};
+$('#lru').onclick=()=>setLang('ru');
+$('#luk').onclick=()=>setLang('uk');
 $('#pnew').onclick=()=>{S=blank();tab='req';delArmed=false;renderAll()};
 $('#plist').onchange=e=>{if(e.target.value)openProject(e.target.value)};
 $('#pdel').onclick=async()=>{
