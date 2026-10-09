@@ -1157,8 +1157,10 @@ const descHint=()=>{if(!S.req)return'';
   return n?`<div class="warnbox"><b>Описания взяты из оферты поставщика на языке оригинала</b> (${n} поз.): перевода на ${S.clientLang==='uk'?'украинский':'русский'} в оферте нет. Новые оферты переводятся сразу при разборе на выбранный язык. <button class="btn sm" id="cTrOff" type="button">Перевести описания оферт</button></div>`:''};
 /* привод: упомянут в запросе, но не оценён в выбранной оферте */
 const ACT_REQ=/прив[оі]д|електроприв|электроприв|actuator|nap[eę]d|antrieb|auma|saex|sqex|rotork|\bS[AQ]R?E?x?\s?\d{2}\.\d/i;
-const ACT_OFF=/auma|saex|sqex|rotork|actuator|antrieb|siłownik|silownik|nap[eę]d\s+elektr|elektro\s*nap[eę]d|\bS[AQ]R?E?x?\s?\d{2}\.\d/i;
-function hasAct(ls){return(ls||[]).some(l=>(l.equip&&l.equip.length)||ACT_OFF.test((l.article||'')+' '+(l.desc||'')))}
+const ACT_OFF=/auma|saex|sqex|rotork|biffi|premio|pretop|actuator|antrieb|si[łl]ownik|nap[eę]d|прив[оі]д|\bS[AQ]R?E?x?\s?\d{2}\.\d/i;
+/* «без привода» и подобные отрицания не считаются приводом */
+const ACT_NEG=/(?:bez|ohne|without|brak|без)\s+(?:elektro\s*)?(?:nap[eę]d\w*|antrieb\w*|actuator\w*|si[łl]ownik\w*|прив[оі]д\w*)/gi;
+function hasAct(ls){return(ls||[]).some(l=>(l.equip&&l.equip.length)||ACT_OFF.test(((l.article||'')+' '+(l.desc||'')).replace(ACT_NEG,' ')))}
 function actMissing(it,r){return!!(r&&r.ch&&ACT_REQ.test((it.name||'')+' '+(it.params||''))&&!hasAct(r.ch.lines))}
 const noActTxt=()=>S.clientLang==='uk'?'Привід у вартість не входить':'Привод в стоимость не входит';
 const actBox=()=>{if(!S.req)return'';const a=S.req.items.filter(it=>actMissing(it,rowInfo(it)));
