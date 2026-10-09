@@ -1049,6 +1049,19 @@ function best(no){const c=cands(no).filter(x=>x.eur!=null);return c.length?c.red
 
 /* ---------- step 3: calc ---------- */
 const supOn=()=>true;
+function supAllBind(){const sa=$('#supAll');if(!sa)return;sa.onchange=e=>{const v=e.target.value;if(v==='mix')return;const skipped=[];
+    S.req.items.forEach(it=>{const rw=S.rows[it.no]=S.rows[it.no]||{};
+      if(v===''){delete rw.offerId;return}
+      if(cands(it.no).some(x=>x.eur!=null&&x.o.id===v)){rw.offerId=v;if(Array.isArray(rw.add))rw.add=rw.add.filter(x=>x!==v)}else skipped.push(it.no)});
+    S.client.auto=false;changed();renderAll();
+    if(skipped.length)toast('У этого поставщика нет цены на поз. '+skipped.join(', ')+': они оставлены как были')}}
+const SUPCOL=['#4aa3b5','#d49a3a','#8e5fd0','#4fae6a','#c8647a','#7b8bd6'];
+const supColor=o=>{const i=S.offers.indexOf(o);return SUPCOL[(i<0?0:i)%SUPCOL.length]};
+const supBadge=r=>{if(!r.ch)return'<span class="hint">нет цены</span>';return chParts(r.ch).map(p=>`<span style="display:inline-block;border-left:4px solid ${supColor(p.o)};padding:0 6px;margin:1px 0">${esc(p.o.supplier||'?')}</span>`).join('<br>')};
+function cliSupHtml(){const m=new Map();
+  S.req.items.forEach(it=>{const r=rowInfo(it);chParts(r.ch).forEach(pp=>{let e=m.get(pp.o.id);if(!e){e={o:pp.o,nos:[]};m.set(pp.o.id,e)}e.nos.push(it.no)})});
+  const a=[...m.values()];if(!a.length)return'';
+  return`<div class="warnbox" style="background:rgba(70,150,170,.12);border-color:rgba(70,150,170,.5)"><b>Источник цен (виден только вам, в файл для клиента не попадает).</b>${a.length>1?' Предложение собрано из нескольких поставщиков.':''}<div class="tw"><table><thead><tr><th>Поставщик</th><th>Оферта</th><th>Позиции</th></tr></thead><tbody>${a.map(e=>`<tr><td><span style="border-left:4px solid ${supColor(e.o)};padding-left:6px">${esc(e.o.supplier||'?')}</span></td><td>${esc(e.o.number||'')}</td><td>${esc(e.nos.join(', '))}</td></tr>`).join('')}</tbody></table></div></div>`}
 /* общий выбор поставщика для всех позиций (показывается, если оферт больше одной) */
 function supAllHtml(){
   if(!S.offers||S.offers.length<2||!S.req)return'';
@@ -2047,12 +2060,7 @@ function vCalc(m){
   m.querySelectorAll('[data-fxc]').forEach(i=>i.onchange=e=>{fxTab()[e.target.dataset.fxc]=num(e.target.value);S.fxAuto=false;S.ai=null;changed();renderAll()});
   $('#nbp').onclick=async()=>{const b=$('#nbp');b.disabled=true;b.textContent='Загружаю…';try{const d=await loadNbp();S.ai=null;changed();toast('Курсы НБП на '+d+' загружены');renderAll()}catch(err){b.disabled=false;b.textContent='Загрузить курсы НБП (Польша)';toast('Не удалось загрузить курсы НБП: '+(err.message||'нет связи')+'. Введите курс вручную.')}};
   $('#mk').onchange=e=>{S.markup=num(e.target.value)||S.markup;changed();renderAll()};
-  {const sa=$('#supAll');if(sa)sa.onchange=e=>{const v=e.target.value;if(v==='mix')return;const skipped=[];
-    S.req.items.forEach(it=>{const rw=S.rows[it.no]=S.rows[it.no]||{};
-      if(v===''){delete rw.offerId;return}
-      if(cands(it.no).some(x=>x.eur!=null&&x.o.id===v)){rw.offerId=v;if(Array.isArray(rw.add))rw.add=rw.add.filter(x=>x!==v)}else skipped.push(it.no)});
-    S.client.auto=false;changed();renderAll();
-    if(skipped.length)toast('У этого поставщика нет цены на поз. '+skipped.join(', ')+': они оставлены как были')}}
+  supAllBind()
   {const R=mkRules();
    m.querySelectorAll('[data-mr]').forEach(d=>{const i=+d.dataset.mr;d.querySelector('[data-mr-q]').onchange=e=>{R[i].q=e.target.value;saveMkRules();changed()};d.querySelector('[data-mr-m]').onchange=e=>{R[i].m=num(e.target.value);saveMkRules();changed()};d.querySelector('[data-mr-del]').onclick=()=>{R.splice(i,1);saveMkRules();changed();renderAll()}});
    const ad=$('#mrAdd');if(ad)ad.onclick=()=>{R.push({q:'',m:S.markup||1.2});saveMkRules();changed();renderAll()};
@@ -2313,6 +2321,8 @@ function vCli(m){
     <h2>${L.title}</h2>
     ${langSeg()}
     ${trBox()}${actBox()}${descHint()}${leakBox()}
+    ${S.offers.length>1?`<div class="grid" style="max-width:520px;margin-bottom:8px">${supAllHtml()}</div>`:''}
+    ${cliSupHtml()}
     <p class="sub">Версия для клиента: только цены за единицу и суммы в валюте предложения (${saleCur()}). Маржа, курс и поставщики здесь не показываются и в файл не попадают. Язык переключается кнопками RU / UK вверху.</p>
     <div class="grid" style="margin-bottom:12px">
       <label class="f">${L.to}<input type="text" id="cName" value="${esc(c.name)}"></label>
@@ -2330,9 +2340,9 @@ function vCli(m){
       <div class="grid" style="margin-top:8px"><label class="f">Срок действия предложения<input type="text" id="otVal" value="${esc(ownTerms().validity||'')}" placeholder="например, 14 дней"></label><label class="f">Условия оплаты<input type="text" id="otPay" value="${esc(ownTerms().payment||'')}" placeholder="например, 100% предоплата"></label><label class="f">Условия поставки (Incoterms)<input type="text" id="otInc" value="${esc(ownTerms().incoterms||'')}" placeholder="например, DAP, склад покупателя"></label></div>
       <div class="row2"><button class="btn" id="otSave" type="button">Сохранить и подставить в это КП</button><span class="hint">${dirH&&dirOK?'Сохраняются в общей папке на Диске, коллега увидит те же условия.':'Хранятся в этом браузере. Подключите общую папку на Диске, и условия увидит коллега.'}</span></div></details>
     <div class="row2"><button class="btn" id="cAuto" type="button">Подставить условия из предложений</button><button class="btn" id="cDesc" type="button">Описания на ${S.clientLang==='uk'?'украинском':'русском'} (ИИ)</button>${codeBlocks().length?`<button class="btn" id="cCodes" type="button">Коды привода с расшифровкой (ИИ)</button>`:''}</div>
-    <div class="tw"><table class="xt"><thead><tr><th>${L.no}</th><th>${L.desc}</th><th>${L.qty}</th><th>${L.unit}</th><th>${L.price}</th><th>${L.sum}</th></tr></thead><tbody>
-    ${rows.map(x=>`<tr data-no="${esc(x.no)}"><td>${esc(x.no)}</td><td><textarea data-desc>${esc(x.desc)}</textarea></td><td class="num">${x.qty==null?'':fmt(x.qty,x.qty%1?2:0)}</td><td>${esc(x.unit||L.pcs)}</td><td class="num">${x.price==null?L.onreq:fmt(x.price)}</td><td class="num">${x.sum==null?'—':fmt(x.sum)}</td></tr>`).join('')}
-    </tbody><tfoot><tr><td colspan="5">${L.total}</td><td class="num">${fmt(t.sale)}</td></tr></tfoot></table></div>
+    <div class="tw"><table class="xt"><thead><tr><th>${L.no}</th><th>${L.desc}</th><th>${L.qty}</th><th>${L.unit}</th><th>${L.price}</th><th>${L.sum}</th><th style="background:rgba(70,150,170,.18)" title="Видно только на экране, в файл не попадает">Поставщик (только здесь)</th></tr></thead><tbody>
+    ${rows.map(x=>`<tr data-no="${esc(x.no)}"><td>${esc(x.no)}</td><td><textarea data-desc>${esc(x.desc)}</textarea></td><td class="num">${x.qty==null?'':fmt(x.qty,x.qty%1?2:0)}</td><td>${esc(x.unit||L.pcs)}</td><td class="num">${x.price==null?L.onreq:fmt(x.price)}</td><td class="num">${x.sum==null?'—':fmt(x.sum)}</td><td style="background:rgba(70,150,170,.08);font-size:12px">${supBadge(rowInfo(S.req.items.find(i=>i.no===x.no)))}</td></tr>`).join('')}
+    </tbody><tfoot><tr><td colspan="5">${L.total}</td><td class="num">${fmt(t.sale)}</td><td></td></tr></tfoot></table></div>
     <p class="hint">${L.vat}</p>
     ${verBox()}
     ${(()=>{const d=S.req.items.map(rowInfo).filter(r=>r.q!==r.qReq);return d.length?`<p class="stale">Количество в предложении отличается от запроса по позициям: ${d.map(r=>esc(r.it.no)+' ('+fmt(r.qReq,0)+' → '+fmt(r.q,r.q%1?2:0)+')').join(', ')}. Причина обычно в минимальном количестве заказа поставщика. Изменить можно на вкладке «Калькулятор».</p>`:''})()}
@@ -2347,6 +2357,7 @@ function vCli(m){
     ${(()=>{const D=CD[S.clientLang]||CD.ru,rr=clientDev(),ST={ok:['ok',D.ok],dev:['crit',D.dev],none:['ask',D.none]};return`<div class="tw"><table class="xt"><thead><tr><th>${D.no}</th><th>${D.pos}</th><th>${D.req}</th><th>${D.off}</th><th>${D.lead}</th><th>${D.note}</th><th>${D.st}</th></tr></thead><tbody>${rr.map(x=>`<tr data-dno="${esc(x.no)}"><td>${esc(x.no)}</td><td style="text-align:left;min-width:180px">${esc(x.name)}</td><td class="num" style="text-align:center">${esc(x.req)}</td><td class="num" style="text-align:center">${esc(x.off)}</td><td style="text-align:center">${esc(x.lead)}</td><td><textarea data-cnote>${esc(x.note)}</textarea></td><td style="text-align:center"><span class="pill ${ST[x.status][0]}">${ST[x.status][1]}</span></td></tr>`).join('')}</tbody></table></div>`})()}
     <div class="row2"><button class="btn pri" id="pDev" type="button">Скачать PDF</button><button class="btn" id="wDev" type="button">Word</button><button class="btn" id="rDev" type="button">Вернуть автотекст комментариев</button></div>
   </section>`;
+  supAllBind();
   const bind=(id,k)=>{$(id).onchange=e=>{S.client[k]=e.target.value;changed();renderTabs()}};
   $('#cFromSel').onchange=e=>{S.client.fromOn=e.target.value==='own';if(S.client.fromOn&&!S.client.from){try{S.client.from=localStorage.getItem('mva_own_name')||''}catch(x){}if(!S.client.from)S.client.from='MVA Industries Sp. z o.o.'}changed();renderAll()};
   {const f=$('#cFrom');if(f)f.onchange=e=>{S.client.from=e.target.value;try{localStorage.setItem('mva_own_name',e.target.value)}catch(x){}changed()}}
