@@ -95,6 +95,8 @@ tfoot td{font-weight:600;background:var(--bg)}
 .row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-block:10px}
 .stats{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:12px}
 .stat{border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.stat[data-jump]{cursor:pointer}.stat[data-jump]:hover,.stat[data-jump]:focus-visible{outline:2px solid var(--muted);outline-offset:1px}
+.rep-h{scroll-margin-top:72px}@keyframes flashrow{0%,60%{background:rgba(255,200,0,.35)}100%{background:transparent}}tr.flash td{animation:flashrow 2.2s ease-out}.backtop{font-size:12px;margin:6px 0 0}
 .stat b{display:block;font-family:var(--f-mono);font-size:20px;font-variant-numeric:tabular-nums}
 .stat span{color:var(--muted);font-size:12px}
 .empty{border:1px dashed var(--line);border-radius:8px;padding:18px;color:var(--muted)}
@@ -2315,31 +2317,31 @@ function vRep(m){
     <h2>Отчёт: запрос и предложения</h2>
     <p class="sub">Автоматические проверки по количеству, срокам, единицам, НДС, валюте и сроку действия, плюс техническая сверка параметров через ИИ. Решение по аналогам и выбору поставщика остаётся за инженером.</p>
     <div class="stats">
-      <div class="stat"><b>${S.req.items.length}</b><span>позиций в запросе</span></div>
-      <div class="stat"><b>${S.offers.length}</b><span>предложений</span></div>
-      <div class="stat"><b style="color:var(--crit)">${cnt('crit')}</b><span>критичных</span></div>
-      <div class="stat"><b style="color:var(--warn)">${cnt('ask')}</b><span>к уточнению</span></div>
-      <div class="stat"><b style="color:${compareRows().some(x=>x.bad)?'var(--crit)':'inherit'}">${compareRows().filter(x=>x.bad).length}</b><span>позиций с другим кол-вом или ед.</span></div>
-      <div class="stat"><b style="color:var(--crit)">${paramMatrix().filter(x=>x.verdict==='crit').length}</b><span>позиций с критичным отличием параметров</span></div>
-      <div class="stat"><b style="color:var(--warn)">${paramMatrix().filter(x=>x.verdict==='ask').length}</b><span>позиций, где нужно уточнить параметры</span></div>
-      <div class="stat"><b style="color:#8e5fd0">${paramMatrix().filter(x=>x.analog).length}</b><span>позиций с аналогом</span></div>
+      <div class="stat" data-jump="cmp"><b>${S.req.items.length}</b><span>позиций в запросе</span></div>
+      <div class="stat" data-jump="sup"><b>${S.offers.length}</b><span>предложений</span></div>
+      <div class="stat" data-jump="f:crit"><b style="color:var(--crit)">${cnt('crit')}</b><span>критичных</span></div>
+      <div class="stat" data-jump="f:ask"><b style="color:var(--warn)">${cnt('ask')}</b><span>к уточнению</span></div>
+      <div class="stat" data-jump="cmp"><b style="color:${compareRows().some(x=>x.bad)?'var(--crit)':'inherit'}">${compareRows().filter(x=>x.bad).length}</b><span>позиций с другим кол-вом или ед.</span></div>
+      <div class="stat" data-jump="mtx"><b style="color:var(--crit)">${paramMatrix().filter(x=>x.verdict==='crit').length}</b><span>позиций с критичным отличием параметров</span></div>
+      <div class="stat" data-jump="mtx"><b style="color:var(--warn)">${paramMatrix().filter(x=>x.verdict==='ask').length}</b><span>позиций, где нужно уточнить параметры</span></div>
+      <div class="stat" data-jump="mtx"><b style="color:#8e5fd0">${paramMatrix().filter(x=>x.analog).length}</b><span>позиций с аналогом</span></div>
       <div class="stat"><b>${fmt(t.pct,1)}%</b><span>маржа по итогу</span></div>
     </div>
-    <h3>Поставщики</h3>
+    <h3 class="rep-h" id="rpSup">Поставщики</h3>
     <div class="tw"><table><thead><tr><th>Поставщик</th><th>Позиций с ценой</th><th>Лучшая цена по</th><th>Итого, EUR (себестоимость)</th></tr></thead><tbody>
     ${per.map(p=>`<tr><td>${esc(p.o.supplier)} <span class="mono">${esc(p.o.number)}</span></td><td class="num">${p.cov} из ${S.req.items.length}</td><td class="num">${p.win}</td><td class="num">${p.cov?fmt(p.tot):'—'}${p.cov<S.req.items.length&&p.cov?'<div class="hint">неполный набор</div>':''}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="row2"><button class="btn pri" id="doTech" type="button">Техническая сверка (ИИ)</button><button class="btn" id="xRep" type="button">Скачать отчёт .html</button><button class="btn" id="pRep" type="button">PDF</button><button class="btn" id="wRep" type="button">Word</button>${S.ai?`<span class="hint">Сверка выполнена, замечаний от ИИ: ${S.ai.findings.length}. После правок в предложениях запустите её снова.</span>`:''}</div>
-    <h3 style="margin-top:12px">Сравнение с запросом по позициям</h3>
+    <h3 class="rep-h" id="rpCmp" style="margin-top:12px">Сравнение с запросом по позициям</h3>
     <p class="hint">В каждой ячейке: количество, единица, срок поставки и цена за единицу в EUR. Красным отмечено несовпадение с запросом, звёздочка — выбранный поставщик.</p>
     <div class="tw"><table class="xt"><thead><tr><th>№</th><th>Запрос</th><th>Кол-во в запросе</th>${S.offers.map(o=>`<th>${esc(o.supplier)}</th>`).join('')}<th>Итог</th></tr></thead><tbody>
     ${compareRows().map(x=>`<tr><td>${esc(x.it.no)}</td><td style="text-align:left;min-width:200px">${esc(x.it.name)}<div class="hint">${esc(x.it.params)}</div></td><td class="num" style="text-align:center">${x.it.qty==null?'?':fmt(x.it.qty,x.it.qty%1?2:0)} ${esc(x.it.unit||'')}</td>${x.cells.map(c=>c.none?'<td style="text-align:center;color:var(--muted)">нет</td>':`<td style="text-align:left;${c.qBad||c.uBad?'background:var(--crit-bg);':''}"><b style="${c.qBad?'color:var(--crit)':''}">${esc(c.qty)} ${esc(c.unit)}</b>${c.chosen?' ★':''}<div class="hint" style="${c.lBad?'color:var(--warn);font-weight:600':''}">${esc(c.lead)} · ${c.unitEur} EUR</div></td>`).join('')}<td style="text-align:center">${x.bad?'<span class="pill crit">не совпадает</span>':'<span class="pill ok">совпадает</span>'}</td></tr>`).join('')}
     </tbody></table></div>
-    <h3 style="margin-top:12px">Матрица соответствия параметров (запрос — оферта)</h3>
+    <h3 class="rep-h" id="rpMtx" style="margin-top:12px">Матрица соответствия параметров (запрос — оферта)</h3>
     <p class="hint">По каждой позиции: что указано в запросе, что в оферте и совпадает ли. «Не указано» значит, что параметр есть в запросе, а в оферте поставщик его не подтвердил. «Добавлено поставщиком» значит, что в запросе этого не было.</p>
     <div class="tw">${matrixHtml(true).replace('<table>','<table class="xt">')}</div>
-    <h3 style="margin-top:12px">Расхождения запрос — предложение</h3>
-    ${sorted.length?`<div class="tw"><table><thead><tr><th>Важность</th><th>Поз.</th><th>Тема</th><th>Описание</th></tr></thead><tbody>${sorted.map(x=>`<tr><td><span class="pill ${x.sev}">${SEVL[x.sev]}</span></td><td>${esc(x.item)}</td><td>${esc(x.topic)}</td><td style="min-width:260px">${esc(x.text)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Расхождений не найдено.</div>'}
+    <h3 class="rep-h" id="rpF" style="margin-top:12px">Расхождения запрос — предложение</h3>
+    ${sorted.length?`<div class="tw"><table><thead><tr><th>Важность</th><th>Поз.</th><th>Тема</th><th>Описание</th></tr></thead><tbody>${sorted.map(x=>`<tr data-sev="${x.sev}"><td><span class="pill ${x.sev}">${SEVL[x.sev]}</span></td><td>${esc(x.item)}</td><td>${esc(x.topic)}</td><td style="min-width:260px">${esc(x.text)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Расхождений не найдено.</div>'}
   </section>
   <section class="card">
     <h2>Письмо поставщику с уточнениями</h2>
@@ -2348,6 +2350,14 @@ function vRep(m){
     ${clar?`<textarea class="letter" id="clText" aria-label="Письмо поставщику">${esc(clar.text)}</textarea><div class="row2"><button class="btn sm" id="clCopy" type="button">Копировать письмо</button></div>`:''}
   </section>`;
   m.querySelectorAll('[data-an]').forEach(s=>s.onchange=e=>{const no=s.dataset.an;S.rows[no]=Object.assign(S.rows[no]||{},{analog:e.target.value});S.client.auto=false;changed();renderAll()});
+  m.querySelectorAll('.stat[data-jump]').forEach(t=>{t.setAttribute('role','button');t.tabIndex=0;
+    const go=()=>{const j=t.dataset.jump;let el=null,rows=[];
+      if(j.startsWith('f:')){rows=[...m.querySelectorAll('tr[data-sev="'+j.slice(2)+'"]')];el=rows[0]}
+      else el=m.querySelector({cmp:'#rpCmp',sup:'#rpSup',mtx:'#rpMtx'}[j]);
+      if(!el){toast('В этом разделе ничего нет');return}
+      el.scrollIntoView({behavior:'smooth',block:'center'});
+      rows.forEach(r=>{r.classList.remove('flash');void r.offsetWidth;r.classList.add('flash')})};
+    t.onclick=go;t.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}}});
   $('#doTech').onclick=()=>run('ИИ сверяет параметры',(s,p)=>techCheck(s,p));
   $('#xRep').onclick=()=>saveFile(`otchet_${safeName(S.name)}.html`,reportHtml(),'rep');
   $('#pRep').onclick=()=>exportDoc('pdf',docReport(),`otchet_${safeName(S.name)}`,'rep');$('#wRep').onclick=()=>exportDoc('docx',docReport(),`otchet_${safeName(S.name)}`,'rep');
