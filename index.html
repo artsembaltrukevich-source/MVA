@@ -1553,11 +1553,11 @@ function docOffer(){
     const rr=[];cb.forEach(b=>b.lines.forEach(l=>{rr.push({bold:true,cells:['Поз. '+b.no,l.code||l.article||'',b.name]});l.equip.filter(codeTxt).forEach(e=>rr.push({cells:['',e.code,codeTxt(e)]}))}));
     blocks.push({t:'table',head:S.clientLang==='uk'?['Поз.','Код','Розшифровка']:['Поз.','Код','Расшифровка'],w:[10,30,60],al:['c','l','l'],rows:rr,grey:true});
   }
-  return{title:L.title+(c.number?' № '+c.number:''),meta:[[L.date,dRuF(c.date)],[L.to,c.name],[L.from,fromTxt()]].filter(x=>x[1]),blocks,landscape:false};
+  return{title:L.title+(c.number?' № '+c.number:''),meta:[[L.date,dRuF(c.date)],[L.to,c.name],[L.from,fromTxt()]].filter(x=>x[1]),blocks,landscape:false,fit:true};
 }
 function docCalc(){
   const rows=S.req.items.map(rowInfo),t=totals(),cu=saleCur(),CD=calcDescMap(),sups=calcSups();
-  return{title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)+(S.fxAuto!==false?' (НБП'+(S.rateDate?' '+S.rateDate:'')+')':' (задан вручную)')],['Наценка по умолчанию','×'+S.markup],...(sups.length?[['Поставщик',sups.map(o=>(o.supplier||'')+(o.number?' (оферта №'+o.number+')':'')).join('; ')]]:[])],landscape:true,
+  return{fit:true,title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)+(S.fxAuto!==false?' (НБП'+(S.rateDate?' '+S.rateDate:'')+')':' (задан вручную)')],['Наценка по умолчанию','×'+S.markup],...(sups.length?[['Поставщик',sups.map(o=>(o.supplier||'')+(o.number?' (оферта №'+o.number+')':'')).join('; ')]]:[])],landscape:true,
    blocks:[{t:'table',head:['№','Позиция','Кол-во','Цена пост.','EUR/ед','Наценка ×','Клиенту/ед, EUR','Сумма клиенту, EUR','Маржа %'],w:[4,47,6,10,8,7,10,11,7],al:['c','l','c','r','r','c','r','r','r'],
     rows:rows.flatMap(r=>[[r.it.no,CD[r.it.no]||(r.it.name+(r.it.params?', '+r.it.params:'')),fmt(r.q,r.q%1?2:0),chPriceS(r.ch),fmt(r.cost),'×'+r.markup,fmt(r.sale),fmt(r.saleT),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]),total:['Итого, EUR',fmt(t.sale)]},
     {t:'kv',items:[['Себестоимость, EUR',fmt(t.cost)],['Цена клиенту, EUR',fmt(t.sale)],['Маржа, EUR',fmt(t.margin)],['Маржа от цены клиенту',fmt(t.pct,1)+'%'],...(saleCur()!=='EUR'?[['Цена клиенту, '+cu,fmt(cliTotal(cliRows()))]]:[])].concat(t.miss?[['Позиций без цены',String(t.miss)]]:[])},
@@ -1587,29 +1587,38 @@ function docReport(){
 async function docPdf(m){
   await loadPdfMake();
   const avail=m.landscape?762:515,NAVY='#1F3A4D';
-  const cont=[{text:m.title,fontSize:16,bold:true,color:NAVY,margin:[0,0,0,6]}];
-  (m.meta||[]).forEach(([k,v])=>cont.push({text:[{text:k+': ',color:'#5B6B75',bold:true},{text:String(v),bold:true}],fontSize:10,margin:[0,0,0,2]}));
-  cont.push({text:'',margin:[0,0,0,6]});
-  for(const b of m.blocks){
-    if(b.t==='h')cont.push({text:b.text,fontSize:12,bold:true,color:NAVY,margin:[0,10,0,4]});
-    else if(b.t==='p')cont.push({text:b.text,fontSize:9,italics:!!b.note,color:b.note?'#5B6B75':'#15222B',margin:[0,4,0,4]});
-    else if(b.t==='break')cont.push({text:'',pageBreak:'after'});
-    else if(b.t==='kv')b.items.forEach(([k,v])=>cont.push({text:[{text:k+': ',bold:true,color:NAVY},{text:String(v)}],fontSize:10,margin:[0,2,0,2]}));
-    else if(b.t==='table'){
-      const sum=b.w.reduce((a,x)=>a+x,0),W=b.w.map(x=>Math.round(x/sum*(avail-b.w.length*8-2)*10)/10),AL={c:'center',l:'left',r:'right'};
-      const hc=b.grey?'#D9D9D9':NAVY,htxt=b.grey?'#15222B':'#FFFFFF';
-      const body=[b.head.map((h,i)=>({text:h,bold:true,color:htxt,fillColor:hc,alignment:'center',fontSize:9}))];
-      b.rows.forEach((r,ri)=>{const cells=Array.isArray(r)?r:r.cells,bold=!Array.isArray(r)&&r.bold;body.push(cells.map((v,i)=>{const fill=ri%2&&!b.grey?'#F2F5F7':null;
-        if(isStruct(v)){const ls=String(v).split('\n'),head=ls.shift(),items=[];let code=null;ls.forEach(x=>{x=x.replace(/^•\s*/,'');if(CODE_LINE.test(x))code=x;else items.push(x)});
-          const st=[{text:head,bold:true,fontSize:9,margin:[0,0,0,3]}];if(items.length)st.push({ul:items,fontSize:8.5,lineHeight:1.15});if(code)st.push({text:code,fontSize:7.5,italics:true,color:'#5B6B75',margin:[0,4,0,0]});
-          return{stack:st,alignment:'left',fillColor:fill}}
-        return{text:String(v==null?'':v),alignment:AL[b.al[i]],fontSize:9,bold:!!bold,fillColor:fill}}))});
-      if(b.total){const n=b.head.length;body.push([{text:b.total[0],colSpan:n-1,alignment:'right',bold:true,fontSize:10,fillColor:'#DFE7EC'},...Array(n-2).fill({}),{text:b.total[1],alignment:'right',bold:true,fontSize:11,fillColor:'#DFE7EC'}])}
-      cont.push({table:{headerRows:1,widths:W,body,dontBreakRows:true},layout:{hLineWidth:()=>.5,vLineWidth:()=>.5,hLineColor:()=>'#9AA5AD',vLineColor:()=>'#9AA5AD',paddingLeft:()=>4,paddingRight:()=>4,paddingTop:()=>3,paddingBottom:()=>3},margin:[0,0,0,4]});
+  const build=(k,fit)=>{
+    const z=n=>Math.round(n*k*10)/10;let pages=0;
+    const cont=[{text:m.title,fontSize:z(16),bold:true,color:NAVY,margin:[0,0,0,z(6)]}];
+    (m.meta||[]).forEach(([kk,v])=>cont.push({text:[{text:kk+': ',color:'#5B6B75',bold:true},{text:String(v),bold:true}],fontSize:z(10),margin:[0,0,0,z(2)]}));
+    cont.push({text:'',margin:[0,0,0,z(6)]});
+    for(const b of m.blocks){
+      if(b.t==='h')cont.push({text:b.text,fontSize:z(12),bold:true,color:NAVY,margin:[0,z(10),0,z(4)]});
+      else if(b.t==='p')cont.push({text:b.text,fontSize:z(9),italics:!!b.note,color:b.note?'#5B6B75':'#15222B',margin:[0,z(4),0,z(4)]});
+      else if(b.t==='break')cont.push({text:'',pageBreak:'after'});
+      else if(b.t==='kv')b.items.forEach(([kk,v])=>cont.push({text:[{text:kk+': ',bold:true,color:NAVY},{text:String(v)}],fontSize:z(10),margin:[0,z(2),0,z(2)]}));
+      else if(b.t==='table'){
+        const sum=b.w.reduce((a,x)=>a+x,0),W=b.w.map(x=>Math.round(x/sum*(avail-b.w.length*8-2)*10)/10),AL={c:'center',l:'left',r:'right'};
+        const hc=b.grey?'#D9D9D9':NAVY,htxt=b.grey?'#15222B':'#FFFFFF';
+        const body=[b.head.map((h,i)=>({text:h,bold:true,color:htxt,fillColor:hc,alignment:'center',fontSize:z(9)}))];
+        b.rows.forEach((r,ri)=>{const cells=Array.isArray(r)?r:r.cells,bold=!Array.isArray(r)&&r.bold;body.push(cells.map((v,i)=>{const fill=ri%2&&!b.grey?'#F2F5F7':null;
+          if(isStruct(v)){const ls=String(v).split('\n'),head=ls.shift(),items=[];let code=null;ls.forEach(x=>{x=x.replace(/^•\s*/,'');if(CODE_LINE.test(x))code=x;else items.push(x)});
+            const st=[{text:head,bold:true,fontSize:z(9),margin:[0,0,0,z(3)]}];if(items.length)st.push({ul:items,fontSize:z(8.5),lineHeight:1.15});if(code)st.push({text:code,fontSize:z(7.5),italics:true,color:'#5B6B75',margin:[0,z(4),0,0]});
+            return{stack:st,alignment:'left',fillColor:fill}}
+          return{text:String(v==null?'':v),alignment:AL[b.al[i]],fontSize:z(9),bold:!!bold,fillColor:fill}}))});
+        if(b.total){const n=b.head.length;body.push([{text:b.total[0],colSpan:n-1,alignment:'right',bold:true,fontSize:z(10),fillColor:'#DFE7EC'},...Array(n-2).fill({}),{text:b.total[1],alignment:'right',bold:true,fontSize:z(11),fillColor:'#DFE7EC'}])}
+        cont.push({table:{headerRows:1,widths:W,body,dontBreakRows:!fit},layout:{hLineWidth:()=>.5,vLineWidth:()=>.5,hLineColor:()=>'#9AA5AD',vLineColor:()=>'#9AA5AD',paddingLeft:()=>4,paddingRight:()=>4,paddingTop:()=>z(3),paddingBottom:()=>z(3)},margin:[0,0,0,z(4)]});
+      }
     }
-  }
-  const def={pageSize:'A4',pageOrientation:m.landscape?'landscape':'portrait',pageMargins:[40,40,40,44],defaultStyle:{font:'Roboto',fontSize:10},content:cont,footer:(cur,tot)=>({text:cur+' / '+tot,alignment:'right',fontSize:8,color:'#5B6B75',margin:[0,0,40,0]}),info:{title:m.title,creator:''}};
-  return new Promise((res,rej)=>{try{window.pdfMake.createPdf(def).getBlob(b=>res(b))}catch(e){rej(e)}});
+    const def={pageSize:'A4',pageOrientation:m.landscape?'landscape':'portrait',pageMargins:k<1?[36,30,36,36]:[40,40,40,44],defaultStyle:{font:'Roboto',fontSize:z(10)},content:cont,footer:(cur,tot)=>{pages=tot;return{text:cur+' / '+tot,alignment:'right',fontSize:8,color:'#5B6B75',margin:[0,0,36,0]}},info:{title:m.title,creator:''}};
+    return new Promise((res,rej)=>{try{window.pdfMake.createPdf(def).getBlob(b=>res({blob:b,pages}))}catch(e){rej(e)}});
+  };
+  if(!m.fit)return(await build(1,false)).blob;
+  /* предложение и калькулятор стараемся уместить на одном листе: уменьшаем шрифт ступенями */
+  let r=await build(1,true);
+  if(r.pages<=1||r.pages>2)return r.blob;
+  for(const k of [.94,.88,.82,.76,.7,.64]){const t=await build(k,true);if(t.pages<=1)return t.blob}
+  return r.blob;
 }
 async function docDocx(m){
   await loadDocx();const D=window.docx;
