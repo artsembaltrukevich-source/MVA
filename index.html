@@ -1161,7 +1161,7 @@ const partLabel=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean
 const partLabelX=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+(a?': '+a:'')+' ('+(p.o.currency||'')+')'};
 const calcSups=()=>{const m=new Map();S.req.items.forEach(it=>{const r=rowInfo(it);chParts(r.ch).forEach(p=>m.set(p.o.id,p.o))});return[...m.values()]};
 const calcTitle=()=>{const u=calcSups(),X=CLX();return S.name+(u.length?'  ·  '+X.sup+': '+u.map(o=>(o.supplier||'')+(o.number?' ('+X.of+o.number+')':'')).join('; '):'')};
-const calcDescMap=()=>{const m={};cliRows().forEach(x=>{m[x.no]=x.desc});return m};
+const calcDescMap=()=>{const m={};cliRows().forEach(x=>{m[x.no]=fmtDesc(x.desc)});return m};
 const calcFileBase=()=>{const u=calcSups().map(o=>supTag(o)).filter(x=>x.length>=2),base=safeName(S.name),add=[...new Set(u)].filter(n=>!base.toLowerCase().includes(safeName(n).toLowerCase()));return 'kalkulator_'+base+(add.length?'_'+add.map(safeName).join('_'):'')};
 const docSubs=r=>r.ch&&r.ch.comp?r.ch.parts.map(p=>['','   ↳ '+partLabelX(p),'',fmt(p.cur)+' '+(p.o.currency||''),fmt(p.eur),'','','','']):[];
 function compRows(r){
@@ -1278,6 +1278,23 @@ const CL={
 };
 const fromTxt=()=>S.client.fromOn&&S.client.from?String(S.client.from).trim():'';
 const defDesc=it=>it.name+(it.params?', '+it.params:'');
+/* оформление описаний: заголовок и отдельная строка на каждый параметр или код */
+function descParts(t){
+  let s=String(t==null?'':t).replace(/[\u00a0\u202f\u2009\u2007]/g,' ').replace(/[ \t]+/g,' ').trim();
+  if(!s)return[];
+  let p=s.indexOf('\n')>=0?s.split(/\s*\n+\s*/):s.split(/;\s+|\.\s+(?=[A-ZА-ЯІЇЄҐ«"(\[])/);
+  const out=[];
+  p.forEach(x=>{x=x.replace(/^[•\-\s]+/,'').replace(/[\s;]+$/,'').trim();if(!x)return;if(out.length&&x.length<10)out[out.length-1]+=' '+x;else out.push(x)});
+  return out.map(x=>x.replace(/\.$/,''));
+}
+function fmtDesc(t){const p=descParts(t);if(p.length<3)return String(t==null?'':t).replace(/[\u00a0\u202f\u2009\u2007]/g,' ');return p[0]+p.slice(1).map(x=>'\n• '+x).join('')}
+const isStruct=v=>typeof v==='string'&&v.indexOf('\n• ')>=0;
+const xvPlain=v=>v&&typeof v==='object'&&v.richText?v.richText.map(r=>r.text).join(''):v;
+function xv(t){
+  if(!isStruct(t))return t;const i=t.indexOf('\n');
+  return{richText:[{text:t.slice(0,i)+'\n',font:{name:XF,size:10,bold:true}},{text:t.slice(i+1),font:{name:XF,size:9}}]};
+}
+const CODE_LINE=/^(Полный заказной код|Повний код замовлення|Заказной код|Код замовлення|Order code)/i;
 const lineDesc=l=>(S.clientLang==='uk'?l.dUk:l.dRu)||l.desc||'';
 const lineTrL=(l,g)=>!!(g==='uk'?l.dUk:l.dRu);
 const lineTr=l=>lineTrL(l,S.clientLang);
@@ -1400,7 +1417,7 @@ function cliXlsx(){
   const L=Lc(),c=S.client,rows=cliRows();
   const A=[[L.title+(c.number?' № '+c.number:'')],[L.date+': '+c.date,'','','','',''],[c.name?L.to+': '+c.name:'',fromTxt()?L.from+': '+fromTxt():''].filter(Boolean).join('    ')?[[c.name?L.to+': '+c.name:'',fromTxt()?L.from+': '+fromTxt():''].filter(Boolean).join('    ')]:[''],[],[L.no,L.desc,L.qty,L.unit,L.price,L.sum]];
   const ws=XLSX.utils.aoa_to_sheet(A);let r=6;const f=r;
-  rows.forEach(x=>{ws['A'+r]={t:'s',v:x.no};ws['B'+r]={t:'s',v:x.desc};ws['C'+r]={t:'n',v:x.qty==null?0:x.qty};ws['D'+r]={t:'s',v:x.unit||L.pcs};
+  rows.forEach(x=>{ws['A'+r]={t:'s',v:x.no};ws['B'+r]={t:'s',v:fmtDesc(x.desc)};ws['C'+r]={t:'n',v:x.qty==null?0:x.qty};ws['D'+r]={t:'s',v:x.unit||L.pcs};
     if(x.price!=null){ws['E'+r]={t:'n',v:x.price};ws['F'+r]={t:'n',f:`E${r}*C${r}`}}else{ws['E'+r]={t:'s',v:L.onreq}}r++});
   const l=r-1;ws['B'+r]={t:'s',v:L.total};ws['F'+r]={t:'n',f:`SUM(F${f}:F${l})`};r+=2;
   [[L.vat],[c.validity&&L.validity+': '+c.validity],[c.delivery&&L.delivery+': '+c.delivery],[c.payment&&L.payment+': '+c.payment],[c.incoterms&&L.incoterms+': '+c.incoterms]].forEach(a=>{if(a[0]){ws['B'+r]={t:'s',v:a[0]};r++}});
@@ -1440,13 +1457,13 @@ async function cliXlsxPretty(){
   const f=r;
   rows.forEach((x,i)=>{
     const z=i%2?fillA(ZEBRA):null;
-    const vals=[x.no,x.desc,x.qty==null?null:x.qty,x.unit||L.pcs,x.price,null];
+    const vals=[x.no,xv(fmtDesc(x.desc)),x.qty==null?null:x.qty,x.unit||L.pcs,x.price,null];
     vals.forEach((v,k)=>{const cell=ws.getCell(r,k+1);if(k<5&&v!=null)cell.value=v;cell.font=font();cell.border=bdr();if(z)cell.fill=z;cell.alignment={vertical:'middle',wrapText:true,horizontal:k===1?'left':k===4||k===5?'right':'center'}});
     if(x.price==null){const cell=ws.getCell(r,5);cell.value=L.onreq;cell.font=font({italic:true,color:{argb:'FF8A5200'}})}
     ws.getCell(r,5).numFmt='#,##0.00';ws.getCell(r,6).numFmt='#,##0.00';
     ws.getCell(r,6).value=x.price!=null?{formula:`E${r}*C${r}`,result:x.sum}:null;
     ws.getCell(r,3).numFmt='0.##';
-    ws.getRow(r).height=Math.max(24,14*linesEst(x.desc,70)+8);
+    ws.getRow(r).height=Math.max(24,13.5*linesEst(fmtDesc(x.desc),64)+8);
     r++});
   const l=r-1;
   ws.mergeCells(`A${r}:E${r}`);const tl=ws.getCell('A'+r);tl.value=L.total+' ('+saleCur()+')';tl.font=font({size:11,bold:true});tl.alignment={horizontal:'right',vertical:'middle',indent:1};
@@ -1490,7 +1507,7 @@ async function calcXlsxPretty(){
   rows.forEach(x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
     const set=(col,v,fmt,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fmt)c.numFmt=fmt;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
-    set('A',it.no,null,null,'center');set('B',CD[it.no]||(it.name+(it.params?', '+it.params:'')),null,null,'left');set('C',x.q,'0.##',null,'center');
+    set('A',it.no,null,null,'center');set('B',xv(CD[it.no]||(it.name+(it.params?', '+it.params:''))),null,null,'left');set('C',x.q,'0.##',null,'center');
     if(x.ch){
       if(x.ch.comp){set('F','','#,##0.00','FFFCE4E4');set('G',{formula:`SUM(G${r+1}:G${r+x.ch.parts.length})`,result:x.cost},'#,##0.00','FFFCE4E4')}
       else if(cur==='PLN'){set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',{formula:`F${r}/$J$2`,result:x.cost},'#,##0.00','FFFCE4E4')}
@@ -1500,7 +1517,7 @@ async function calcXlsxPretty(){
       set('D',{formula:`ROUND(G${r}*I${r},2)`,result:x.sale},'#,##0.00','FFE2F0D9');set('E',{formula:`D${r}*C${r}`,result:x.saleT},'#,##0.00','FFE2F0D9');set('H',{formula:`G${r}*C${r}`,result:x.costT},'#,##0.00','FFFCE4E4');
       ws.getCell('E'+r).font=ft({bold:true});
     }else{set('D',CLX().nop);ws.getCell('D'+r).font=ft({italic:true,color:{argb:'FFA62B2B'}})}
-    ws.getRow(r).height=Math.max(22,14*linesEst(ws.getCell('B'+r).value,76)+6);r++;
+    ws.getRow(r).height=Math.max(22,14*linesEst(xvPlain(ws.getCell('B'+r).value),70)+6);r++;
     if(x.ch&&x.ch.comp)x.ch.parts.forEach(p=>{const c2=p.o.currency||'',GR='FFF2F2F2';
       ['A','C','D','E','H','I'].forEach(c=>set(c,'',null,GR));
       set('B','     ↳ '+partLabelX(p),null,GR,'left');ws.getCell('B'+r).font=ft({italic:true,color:{argb:'FF555555'}});
@@ -1527,7 +1544,7 @@ async function loadDocx(){if(window.docx)return;await loadScript('https://cdn.js
 const dRuF=d=>String(d||'').replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$3.$2.$1');
 function docOffer(){
   const L=Lc(),c=S.client,rows=cliRows(),cu=saleCur();
-  const blocks=[{t:'table',head:[L.no,L.desc,L.qty,L.unit,L.price,L.sum],w:[5,50,8,7,15,15],al:['c','l','c','c','r','r'],rows:rows.map(x=>[x.no,x.desc,x.qty==null?'':fmt(x.qty,x.qty%1?2:0),x.unit||L.pcs,x.price==null?L.onreq:fmt(x.price),x.sum==null?'—':fmt(x.sum)]),total:[L.total+' ('+cu+')',fmt(cliTotal(rows))]},{t:'p',text:L.vat,note:true}];
+  const blocks=[{t:'table',head:[L.no,L.desc,L.qty,L.unit,L.price,L.sum],w:[5,50,8,7,15,15],al:['c','l','c','c','r','r'],rows:rows.map(x=>[x.no,fmtDesc(x.desc),x.qty==null?'':fmt(x.qty,x.qty%1?2:0),x.unit||L.pcs,x.price==null?L.onreq:fmt(x.price),x.sum==null?'—':fmt(x.sum)]),total:[L.total+' ('+cu+')',fmt(cliTotal(rows))]},{t:'p',text:L.vat,note:true}];
   const kv=[[L.validity,c.validity],[L.delivery,c.delivery],[L.payment,c.payment],[L.incoterms,c.incoterms]].filter(x=>x[1]);
   if(kv.length)blocks.push({t:'kv',items:kv});
   const cb=S.client.codes!==false?codeBlocks().filter(b=>b.lines.some(l=>l.equip.some(codeTxt))):[];
@@ -1582,7 +1599,11 @@ async function docPdf(m){
       const sum=b.w.reduce((a,x)=>a+x,0),W=b.w.map(x=>Math.round(x/sum*(avail-b.w.length*8-2)*10)/10),AL={c:'center',l:'left',r:'right'};
       const hc=b.grey?'#D9D9D9':NAVY,htxt=b.grey?'#15222B':'#FFFFFF';
       const body=[b.head.map((h,i)=>({text:h,bold:true,color:htxt,fillColor:hc,alignment:'center',fontSize:9}))];
-      b.rows.forEach((r,ri)=>{const cells=Array.isArray(r)?r:r.cells,bold=!Array.isArray(r)&&r.bold;body.push(cells.map((v,i)=>({text:String(v==null?'':v),alignment:AL[b.al[i]],fontSize:9,bold:!!bold,fillColor:ri%2&&!b.grey?'#F2F5F7':null})))});
+      b.rows.forEach((r,ri)=>{const cells=Array.isArray(r)?r:r.cells,bold=!Array.isArray(r)&&r.bold;body.push(cells.map((v,i)=>{const fill=ri%2&&!b.grey?'#F2F5F7':null;
+        if(isStruct(v)){const ls=String(v).split('\n'),head=ls.shift(),items=[];let code=null;ls.forEach(x=>{x=x.replace(/^•\s*/,'');if(CODE_LINE.test(x))code=x;else items.push(x)});
+          const st=[{text:head,bold:true,fontSize:9,margin:[0,0,0,3]}];if(items.length)st.push({ul:items,fontSize:8.5,lineHeight:1.15});if(code)st.push({text:code,fontSize:7.5,italics:true,color:'#5B6B75',margin:[0,4,0,0]});
+          return{stack:st,alignment:'left',fillColor:fill}}
+        return{text:String(v==null?'':v),alignment:AL[b.al[i]],fontSize:9,bold:!!bold,fillColor:fill}}))});
       if(b.total){const n=b.head.length;body.push([{text:b.total[0],colSpan:n-1,alignment:'right',bold:true,fontSize:10,fillColor:'#DFE7EC'},...Array(n-2).fill({}),{text:b.total[1],alignment:'right',bold:true,fontSize:11,fillColor:'#DFE7EC'}])}
       cont.push({table:{headerRows:1,widths:W,body,dontBreakRows:true},layout:{hLineWidth:()=>.5,vLineWidth:()=>.5,hLineColor:()=>'#9AA5AD',vLineColor:()=>'#9AA5AD',paddingLeft:()=>4,paddingRight:()=>4,paddingTop:()=>3,paddingBottom:()=>3},margin:[0,0,0,4]});
     }
@@ -1606,7 +1627,7 @@ async function docDocx(m){
     else if(b.t==='kv')b.items.forEach(([k,v])=>ch.push(para([run(k+': ',{bold:true,color:'1F3A4D'}),run(v)])));
     else if(b.t==='table'){
       const sum=b.w.reduce((a,x)=>a+x,0),W=b.w.map(x=>Math.round(x/sum*total));
-      const cell=(text,i,o={})=>new D.TableCell({width:{size:o.span?W.slice(0,o.span).reduce((a,x)=>a+x,0):W[i],type:D.WidthType.DXA},columnSpan:o.span,borders,verticalAlign:D.VerticalAlign.CENTER,margins:{top:50,bottom:50,left:80,right:80},shading:o.fill?{type:D.ShadingType.CLEAR,fill:o.fill,color:'auto'}:undefined,children:[para(run(text,{size:o.size||18,bold:!!o.bold,color:o.color}),{alignment:o.al||AL[b.al[i]],spacing:{after:0}})]});
+      const cell=(text,i,o={})=>new D.TableCell({width:{size:o.span?W.slice(0,o.span).reduce((a,x)=>a+x,0):W[i],type:D.WidthType.DXA},columnSpan:o.span,borders,verticalAlign:D.VerticalAlign.CENTER,margins:{top:50,bottom:50,left:80,right:80},shading:o.fill?{type:D.ShadingType.CLEAR,fill:o.fill,color:'auto'}:undefined,children:isStruct(text)?(()=>{const ls=String(text).split('\n'),head=ls.shift();return[para(run(head,{size:18,bold:true}),{alignment:D.AlignmentType.LEFT,spacing:{after:50}}),...ls.map(x=>{x=x.replace(/^•\s*/,'');return CODE_LINE.test(x)?para(run(x,{size:15,italics:true,color:'5B6B75'}),{alignment:D.AlignmentType.LEFT,spacing:{before:60,after:0}}):para(run('•  '+x,{size:17}),{alignment:D.AlignmentType.LEFT,spacing:{after:20},indent:{left:240,hanging:240}})})]})():[para(run(text,{size:o.size||18,bold:!!o.bold,color:o.color}),{alignment:o.al||AL[b.al[i]],spacing:{after:0}})]});
       const hf=b.grey?'D9D9D9':'1F3A4D',hcol=b.grey?'15222B':'FFFFFF';
       const rows=[new D.TableRow({tableHeader:true,children:b.head.map((h,i)=>cell(h,i,{fill:hf,bold:true,color:hcol,al:D.AlignmentType.CENTER}))})];
       b.rows.forEach((r,ri)=>{const cells=Array.isArray(r)?r:r.cells,bold=!Array.isArray(r)&&r.bold;rows.push(new D.TableRow({cantSplit:true,children:cells.map((v,i)=>cell(v,i,{bold,fill:ri%2&&!b.grey?'F2F5F7':undefined}))}))});
