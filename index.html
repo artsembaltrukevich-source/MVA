@@ -154,8 +154,10 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
       <button class="btn" id="pnew" type="button">Новый</button>
       <button class="btn danger" id="pdel" type="button" hidden>Удалить</button>
       <button class="btn" id="bDir" type="button">Папка проектов</button>
+      <button class="btn" id="bCopy" type="button" title="Скопировать весь проект текстом: удобно на iPhone/iPad">Копировать проект</button>
+      <button class="btn" id="bPaste" type="button" title="Вставить проект, скопированный на другом устройстве">Вставить проект</button>
       <button class="btn" id="bExp" type="button">Экспорт</button>
-      <label class="btn" for="bImp" style="cursor:pointer">Импорт</label><input type="file" id="bImp" accept=".json,application/json" multiple hidden>
+      <label class="btn" for="bImp" style="cursor:pointer">Импорт</label><input type="file" id="bImp" accept=".json,application/json,text/plain,.txt" multiple hidden>
       <button class="btn pri" id="bHelp" type="button">Инструкция</button>
       <button class="btn" id="bSet" type="button">Настройки ИИ</button>
       <span class="save" id="aist"></span><span class="save" id="fst"></span>
@@ -170,6 +172,12 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   </header>
   <main id="main"></main>
 </div>
+<dialog id="pdlg" aria-label="Вставить проект">
+  <h2>Вставить проект</h2>
+  <p class="sub">На другом устройстве нажмите «Копировать проект», затем здесь вставьте текст в поле (долгое нажатие → «Вставить») и нажмите «Загрузить». Проект откроется сразу.</p>
+  <label class="f">Текст проекта<textarea id="pTxt" placeholder="Вставьте сюда" style="min-height:140px"></textarea></label>
+  <div class="row2"><button class="btn pri" id="pOk" type="button">Загрузить проект</button><button class="btn" id="pClip" type="button">Взять из буфера</button><button class="btn" id="pNo" type="button">Отмена</button></div>
+</dialog>
 <dialog id="idlg" aria-label="Инструкция">
   <div class="idhead"><h2>Инструкция</h2><button class="btn sm" id="iClose" type="button">Закрыть</button></div>
   <p class="sub">Порядок работы от первого запуска до готовых файлов. Приложение сам ничего не отправляет: письма поставщикам и клиентам вы отправляете сами.</p>
@@ -188,7 +196,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <ol class="cyc">
     <li>Нажмите кнопку шага (названа в каждой вкладке ниже). Откроется окно <b>«Запрос к ИИ»</b>.</li>
     <li>Нажмите <b>«Копировать и открыть Claude»</b> (или <b>«…ChatGPT»</b>): запрос копируется, чат открывается в новой вкладке.</li>
-    <li>В чате нажмите <b>Ctrl+V</b> и отправьте. Файл оферты или запроса приложите к сообщению в чате. <b>Один чат на заявку:</b> первая строка первого запроса «Заявка: название» становится названием чата. После первого сообщения скопируйте адрес чата из адресной строки браузера и вставьте в поле «Чат этой заявки» в окне. Ссылку можно не вставлять вручную: скопируйте адрес вкладки (Ctrl+L, Ctrl+C), вернитесь в приложение, и она подхватится сама (или нажмите «Вставить ссылку на чат из буфера»). Дальше все шаги по этой заявке (разбор оферт, привязка приводов, сверка, письма) кнопки открывают в том же чате.</li>
+    <li>В чате нажмите <b>Ctrl+V</b> и отправьте. Файл оферты или запроса приложите к сообщению в чате. <b>Один чат на заявку:</b> первая строка первого запроса «Заявка: название» становится названием чата. После первого сообщения скопируйте адрес чата из адресной строки браузера и вставьте в поле «Чат этой заявки» в окне. Ссылку можно не вставлять вручную: скопируйте адрес вкладки (Ctrl+L, Ctrl+C), вернитесь в приложение, и она подхватится сама (или нажмите «Вставить ссылку на чат из буфера»). Ещё удобнее закладка «MVA: забрать чат» (в окне «Запрос к ИИ», раздел с закладкой): перетащите её на панель закладок один раз, а когда ИИ ответил, нажмите её на вкладке чата. Ссылка на чат и сам ответ попадут в приложение и применятся автоматически. Дальше все шаги по этой заявке (разбор оферт, привязка приводов, сверка, письма) кнопки открывают в том же чате.</li>
     <li>Скопируйте ответ ИИ <b>целиком</b> (кнопка «Копировать» под ответом в чате).</li>
     <li>Вернитесь в приложение: когда вкладка снова активна, ответ из буфера подставляется сам. Нажмите <b>«Вставить ответ из буфера и применить»</b>. Если браузер не дал читать буфер, вставьте ответ в поле «Ответ ИИ» вручную и нажмите «Применить ответ».</li>
     <li>Если ИИ ответил с ошибкой или оборвал ответ: напишите в чате «продолжи JSON с места обрыва», дополните ответ и вставьте снова. Нажатие «Отмена» ничего не меняет.</li>
@@ -257,6 +265,10 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
     <li>«Фактуры»: счета поставщиков и клиентов и их оплата.</li>
   </ol>
 
+  <h3>Перенести проект между устройствами (iPhone, iPad, компьютер)</h3>
+  <p>На устройстве, где проект: нажмите «Копировать проект». На другом устройстве нажмите «Вставить проект» (если браузер спросит, разрешите вставку; иначе вставьте текст в окно долгим нажатием и нажмите «Загрузить»). Проект откроется сразу, если он там уже был, приложение спросит: заменить или сохранить копией. Кнопки «Экспорт»/«Импорт» работают с файлом; на iPhone и iPad «Экспорт» открывает меню «Поделиться» (Сохранить в Файлы, AirDrop, Сообщения).</p>
+  <h3>Валюты</h3>
+  <p>На вкладке «Калькулятор» два выбора: «Валюта калькулятора» (внутренние экран, xlsx и PDF; курс записывается в файл) и «Валюта предложения клиенту» (она же есть на вкладке «Оферта клиенту»). Если все оферты проекта в одной валюте (например, в долларах), калькулятор и предложение по умолчанию открываются в ней; чтобы перевести в евро, выберите EUR в этих полях (пересчёт по курсу НБП). Если для выбранной валюты нет курса, появится поле «нужен курс»; загрузка курсов НБП подставит их автоматически.</p>
   <h3>Передать проект коллеге</h3>
   <p>Если у вас общая папка проектов, коллега видит те же проекты. <b>Защита от одновременной правки:</b> когда вы открываете проект, в папке появляется служебный файл «_lock_…». Если коллега открывает тот же проект, он видит жёлтую полосу «Проект сейчас открыт: имя» и его правки сохраняются только в его браузере, а не в общую папку, чтобы ничего не затереть. Когда вы закрыли проект, замок снимается сам (или через 2,5 минуты, если компьютер выключили). Кнопка «Проверить снова» перепроверяет замок, «Взять управление» снимает его вручную. Своё имя для замка укажите в «Настройках ИИ». Служебные файлы «_lock_…» не удаляйте вручную, пока проект открыт. Иначе «Экспорт» → отправить файл .json → коллега нажимает «Импорт».</p>
 
@@ -301,7 +313,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 <dialog id="mdlg" aria-label="Ручной режим">
   <h2>Запрос к ИИ</h2>
   <p class="sub">1. Нажмите «Копировать и открыть Claude» или «…ChatGPT»: запрос окажется в буфере, чат откроется в новой вкладке. 2. В чате нажмите Ctrl+V и отправьте (файл оферты при необходимости приложите). 3. Скопируйте ответ целиком, вернитесь сюда и нажмите «Вставить ответ из буфера и применить».</p>
-  <div class="card" style="padding:10px;margin-bottom:8px"><div class="hint" id="mTitleLine"></div><label class="f">Чат этой заявки (вставьте адрес чата один раз: после первого сообщения скопируйте ссылку из адресной строки). Дальше кнопки будут открывать именно его.<input type="text" id="mChatUrl" placeholder="https://claude.ai/chat/… или https://chatgpt.com/c/…"><button class="btn sm" id="mChatPaste" type="button" style="margin-top:6px">Вставить ссылку на чат из буфера</button></label></div>
+  <div class="card" style="padding:10px;margin-bottom:8px"><div class="hint" id="mTitleLine"></div><label class="f">Чат этой заявки (вставьте адрес чата один раз: после первого сообщения скопируйте ссылку из адресной строки). Дальше кнопки будут открывать именно его.<input type="text" id="mChatUrl" placeholder="https://claude.ai/chat/… или https://chatgpt.com/c/…"><button class="btn sm" id="mChatPaste" type="button" style="margin-top:6px">Вставить ссылку на чат из буфера</button><details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Закладка «MVA: забрать чат»: ссылка и ответ ИИ одним кликом</summary><p class="hint">1. Перетащите кнопку ниже на панель закладок браузера (показать панель: Ctrl+Shift+B). Делается один раз. 2. Когда ИИ закончил ответ, нажмите эту закладку на вкладке чата ChatGPT или Claude (можно заранее выделить нужный фрагмент ответа). 3. Вернитесь в приложение: ссылка на чат сохранится, ответ вставится и применится сам.</p><a id="mBm" class="btn pri" draggable="true" style="display:inline-block;text-decoration:none">MVA: забрать чат</a></details></label></div>
   <label class="f">Запрос <span id="mInfo"></span><textarea id="mPrompt" readonly style="min-height:110px"></textarea></label>
   <div class="row2"><button class="btn pri" id="mClaude" type="button">Копировать и открыть Claude</button><button class="btn pri" id="mGpt" type="button">Копировать и открыть ChatGPT</button><button class="btn" id="mCopy" type="button">Только копировать</button></div>
   <label class="f">Ответ ИИ<textarea id="mAns" placeholder="Вставьте ответ сюда" style="min-height:150px"></textarea></label>
@@ -562,30 +574,56 @@ async function removeProject(id){
 }
 function setSave(t){const e=$('#savest');if(e)e.textContent=t}
 /* файл проекта: обмен между коллегами */
-function exportProject(){saveFile('mva_'+safeName(S.name)+'.json',JSON.stringify({app:'mva-zayavki',version:1,project:S}))}
+const projText=()=>JSON.stringify({app:'mva-zayavki',version:1,project:S});
+const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+async function exportProject(){
+  const name='mva_'+safeName(S.name)+'.json',txt=projText();
+  if(isIOS()&&navigator.share){
+    try{const f=new File([txt],name,{type:'application/json'});if(!navigator.canShare||navigator.canShare({files:[f]})){await navigator.share({files:[f],title:S.name});return}}
+    catch(e){if(e&&e.name==='AbortError')return}
+  }
+  saveFile(name,txt);
+}
+async function copyProject(){
+  const t=projText();
+  try{await navigator.clipboard.writeText(t);toast('Проект скопирован ('+Math.round(t.length/1024)+' КБ). На другом устройстве нажмите «Вставить проект»');return}catch(e){}
+  try{const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.focus();a.select();a.setSelectionRange(0,t.length);const ok=document.execCommand('copy');a.remove();if(ok){toast('Проект скопирован. На другом устройстве нажмите «Вставить проект»');return}}catch(e){}
+  openPaste(t);toast('Не удалось скопировать сам: выделите текст в окне и скопируйте вручную');
+}
+function openPaste(txt){const d=$('#pdlg');$('#pTxt').value=txt||'';if(!d.open)d.showModal()}
+async function pasteProject(){
+  let t='';
+  try{t=await navigator.clipboard.readText()}catch(e){}
+  if(t&&/"app"\s*:\s*"mva-zayavki"/.test(t.slice(0,300))||t&&/^\s*[{\[]/.test(t)&&t.includes('"offers"')){if(await importText(t,'буфер'))return}
+  openPaste(t&&t.length<3e6?t:'');
+}
 async function exportAll(){
   let cur=[S];
   if(dirH&&dirOK){cur=[];for(const x of await dirList()){try{cur.push(await dirRead(x.id))}catch(e){}}}
   else if(idb){cur=await idbAll()}
   saveFile('mva_backup_'+today()+'.json',JSON.stringify({app:'mva-zayavki',version:1,projects:cur}));
 }
-async function importFiles(files){
+async function importText(text,srcName){
   let n=0;
-  for(const f of files){
-    try{
-      const j=JSON.parse(await f.text());
-      const list=j.projects||(j.project?[j.project]:(j.id&&j.offers?[j]:[]));
-      for(const p of list){
-        if(!p||!p.id||!Array.isArray(p.offers))continue;
-        const q=Object.assign(blank(),p);
-        if(dbh&&projects.some(x=>x.id===q.id)){q.id=uid();q.name=q.name+' (импорт)'}
-        if(dbh){await persist(q);await loadList()}
-        S=q;n++;
+  try{
+    const j=JSON.parse(String(text).trim());
+    const list=(j.projects||(j.project?[j.project]:(j.id&&j.offers?[j]:[]))).filter(p=>p&&p.id&&Array.isArray(p.offers));
+    for(const p of list){
+      const q=Object.assign(blank(),p);
+      const exists=(dbh&&projects.some(x=>x.id===q.id))||(S&&S.id===q.id);
+      if(exists){
+        const rep=list.length===1&&confirm('Проект «'+(q.name||'')+'» уже есть на этом устройстве.\n\nОК — заменить его присланной версией.\nОтмена — сохранить как отдельную копию.');
+        if(!rep){q.id=uid();q.name=q.name+' (импорт)'}
       }
-    }catch(e){toast(f.name+': это не файл проекта MVA')}
-  }
+      if(dbh){await persist(q);await loadList()}
+      S=q;n++;
+    }
+  }catch(e){}
   if(n){tab='req';changed();renderAll();toast('Загружено проектов: '+n)}
+  else toast(srcName+': это не проект MVA');
+  return n;
 }
+async function importFiles(files){for(const f of files)await importText(await f.text(),f.name)}
 /* ---------- helpers: ui ---------- */
 let toastT=null;
 function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{e.hidden=true},3500)}
@@ -615,6 +653,7 @@ const curKey=()=>keyOf(CFG.provider);
 const curModel=()=>modelOf(CFG.provider);
 function b64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(r.error);r.readAsDataURL(blob)})}
 const MANUAL_OCR='В ручном режиме сканы и фото не читаются автоматически. Прикрепите файл в чате ИИ с просьбой дословно переписать текст и вставьте результат в поле «Текст запроса» или «Текст предложения».';
+const BM_CODE='(function(){try{var u=location.href.split(\'#\')[0].split(\'?\')[0],a=\'\',s=String(getSelection()||\'\').trim();if(s)a=s;else{var m=document.querySelectorAll(\'[data-message-author-role="assistant"],.font-claude-response,[class*="font-claude-message"]\'),l=m[m.length-1];if(l){var j=\'\';l.querySelectorAll(\'pre code\').forEach(function(x){if(/\\{/.test(x.innerText))j=x.innerText});a=(j||l.innerText).trim()}}var t=\'MVA-CHAT\\n\'+JSON.stringify({u:u,a:a}),d=document.createElement(\'textarea\');d.value=t;d.style.cssText=\'position:fixed;top:0;left:0;opacity:0\';document.body.appendChild(d);d.select();var ok=false;try{ok=document.execCommand(\'copy\')}catch(e){}d.remove();if(!ok&&navigator.clipboard)navigator.clipboard.writeText(t);var n=document.createElement(\'div\');n.textContent=\'MVA: ссылка на чат\'+(a?\' и ответ\':\'\')+\' скопированы. Вернитесь в приложение.\';n.style.cssText=\'position:fixed;z-index:2147483647;top:16px;left:50%;transform:translateX(-50%);background:#0E6B73;color:#fff;padding:12px 18px;border-radius:8px;font:15px sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.4)\';document.body.appendChild(n);setTimeout(function(){n.remove()},3500)}catch(e){alert(\'MVA: \'+e)}})();';
 function manualAsk(prompt,o){
   return new Promise((res,rej)=>{
     const d=$('#mdlg');
@@ -641,13 +680,18 @@ function manualAsk(prompt,o){
     const setChat=u=>{S.chatUrl=u;changed();$('#mChatUrl').value=u;$('#mTitleLine').innerHTML='Запросы идут в чат этой заявки.'};
     const pasteChat=async auto=>{try{const t=((await navigator.clipboard.readText())||'').trim().split(/\s/)[0];if(chatOk(t)&&t!==S.chatUrl){setChat(t);toast('Ссылка на чат сохранена: дальше запросы пойдут в него');return true}if(!auto)toast('В буфере нет адреса чата Claude или ChatGPT. Откройте чат, нажмите Ctrl+L, Ctrl+C и повторите')}catch(e){if(!auto)toast('Браузер не дал прочитать буфер: вставьте адрес в поле вручную')}return false};
     {const b=$('#mChatPaste');if(b)b.onclick=()=>pasteChat(false)}
+    {const a=$('#mBm');if(a)a.setAttribute('href','javascript:'+BM_CODE.replace(/%/g,'%25').replace(/"/g,'%22').replace(/#/g,'%23').replace(/\n/g,'%0A').replace(/ /g,'%20'))}
+    let viaBm=false;
     const fromClip=async auto=>{
-      try{const t=((await navigator.clipboard.readText())||'').trim();
+      try{let t=((await navigator.clipboard.readText())||'').trim();viaBm=false;
+        if(t.indexOf('MVA-CHAT\n')===0){let pl=null;try{pl=JSON.parse(t.slice(9))}catch(e){}if(pl){if(chatOk(pl.u)&&pl.u!==S.chatUrl){setChat(pl.u);toast('Ссылка на чат сохранена'+(pl.a?', ответ получен':''))}t=String(pl.a||'').trim();viaBm=true;if(!t)return false}}
         if(!t||t===prompt.trim()||t.length<12){if(!auto)toast('В буфере нет ответа ИИ. Скопируйте ответ в чате и повторите');return false}
         $('#mAns').value=t;return true}
       catch(e){if(!auto)toast('Браузер не дал прочитать буфер: вставьте ответ в поле вручную (Ctrl+V) и нажмите «Применить ответ»');return false}};
     $('#mPaste').onclick=async()=>{if(await fromClip(false))$('#mOk').click()};
-    onFocus=async()=>{if(await pasteChat(true))return;if(!$('#mAns').value.trim()&&await fromClip(true))toast('Ответ найден в буфере. Проверьте и нажмите «Применить ответ»')};
+    onFocus=async()=>{if(await pasteChat(true))return;if(!$('#mAns').value.trim()&&await fromClip(true)){
+      if(viaBm){let ok=true;try{parseJsonLoose($('#mAns').value)}catch(e){ok=false}if(ok){toast('Ответ получен из чата и применяется…');setTimeout(()=>{if($('#mdlg').open)$('#mOk').click()},350)}else toast('Ответ получен, но это не полный JSON. Проверьте и нажмите «Применить ответ»')}
+      else toast('Ответ найден в буфере. Проверьте и нажмите «Применить ответ»')}};
     window.addEventListener('focus',onFocus);
     if(o.signal)o.signal.addEventListener('abort',cancel);
     if(d.showModal)d.showModal();else d.setAttribute('open','');
@@ -1054,9 +1098,26 @@ function trXlsx(lang){
 /* ---------- step 2: offers ---------- */
 const CURS=['EUR','USD','GBP','CNY','PLN'];let nbpDay='';
 const fxTab=()=>S.fxs||(S.fxs={});
-const saleCur=()=>S.saleCur||'EUR';
+function autoCur(){const cs=[...new Set(S.offers.map(o=>(o.currency||'').toUpperCase()).filter(Boolean))];return cs.length===1&&cs[0]!=='EUR'&&cs[0]!=='PLN'&&fxKnown(cs[0])?cs[0]:'EUR'}
+const saleCur=()=>S.saleCurSet||(S.versions&&S.versions.length)||(S.saleCur&&S.saleCur!=='EUR')?(S.saleCur||'EUR'):autoCur();
 function fxOf(o){const c=(o.currency||'').toUpperCase();if(c==='EUR')return 1;if(c==='PLN')return num(S.rate);const v=num(o.fx);return v!=null?v:num(fxTab()[c])}
-function saleFx(){const c=saleCur();if(c==='EUR')return 1;if(c==='PLN')return num(S.rate)||1;return num(fxTab()[c])||1}
+const fxFor=c=>c==='EUR'?1:c==='PLN'?(num(S.rate)||1):(num(fxTab()[c])||1);
+const fxKnown=c=>c==='EUR'||c==='PLN'||num(fxTab()[c])>0;
+function saleFx(){return fxFor(saleCur())}
+const calcCur=()=>S.calcCurSet?(S.calcCur||'EUR'):(S.versions&&S.versions.length?'EUR':autoCur());
+const calcFx=()=>fxFor(calcCur());
+const cc=v=>v==null?v:v*calcFx();
+const Ec=t=>String(t).replace(/EUR/g,calcCur());
+const CUR_COMMON=['EUR','USD','GBP','PLN','CNY','CHF','CZK','UAH','SEK','NOK','DKK','JPY','CAD','AUD','HUF','TRY'];
+function curList(cur){const l=CUR_COMMON.filter(c=>fxKnown(c)||c===cur);if(cur&&!l.includes(cur))l.push(cur);return l}
+const curSel=(attr,cur)=>`<select ${attr}>${curList(cur).map(x=>`<option${x===cur?' selected':''}>${x}</option>`).join('')}</select>`;
+function fxcInputs(list){return[...new Set(list.map(c=>(c||'').toUpperCase()))].filter(c=>c&&c!=='EUR'&&c!=='PLN').map(c=>`<label class="f">${c} за 1 EUR${fxKnown(c)?'':' <b style="color:var(--bad,#b00)">(нужен курс)</b>'}<input type="number" step="0.0001" data-fxc="${c}" value="${fxTab()[c]!=null?fxTab()[c]:''}"></label>`).join('')}
+const saleCurHtml=()=>`<label class="f">Валюта предложения клиенту<select data-scur>${curList(saleCur()).map(x=>`<option${x===saleCur()?' selected':''}>${x}</option>`).join('')}</select></label>${fxcInputs([saleCur()])}`;
+function bindCurUi(m){
+  m.querySelectorAll('[data-scur]').forEach(i=>i.onchange=e=>{S.saleCur=e.target.value;S.saleCurSet=true;changed();renderAll()});
+  m.querySelectorAll('[data-ccur]').forEach(i=>i.onchange=e=>{S.calcCur=e.target.value;S.calcCurSet=true;changed();renderAll()});
+  m.querySelectorAll('[data-fxc]').forEach(i=>i.onchange=e=>{fxTab()[e.target.dataset.fxc]=num(e.target.value);S.fxAuto=false;S.ai=null;changed();renderAll()});
+}
 const MKS=(()=>{const a=[];for(let v=110;v<=200;v+=5)a.push((v/100).toFixed(2));return a})();
 function mkOpts(cur,defLabel){let l=MKS.slice();const c=cur==null||cur===''?'':Number(cur).toFixed(2);if(c&&!l.includes(c))l=[c,...l].sort();return(defLabel?`<option value="">${defLabel}</option>`:'')+l.map(v=>`<option value="${v}"${v===c?' selected':''}>×${v}</option>`).join('')}
 const curOpts=cur=>{const c=(cur||'').toUpperCase();const l=CURS.includes(c)||!c?CURS:[c,...CURS];return(c?'':'<option value="">?</option>')+l.map(x=>`<option${x===c?' selected':''}>${x}</option>`).join('')};
@@ -1156,14 +1217,15 @@ function supMeta(r){
     return`<div class="hint">${esc([p.o.number?'оферта №'+p.o.number:'',_arts(p),lt].filter(Boolean).join(' · '))}</div>`}).join('');
 }
 const partKind=p=>hasAct(p.lines)?(S.clientLang==='uk'?'Привід':'Привод'):'Арматура';
-const CLX=()=>S.clientLang==='uk'?{hd:['№','Опис','К-сть','Ціна од. EUR','Сума EUR','Ціна пост.','Ціна пост. EUR','Собівартість EUR','Націнка'],tot:'РАЗОМ',nop:'немає ціни',mg:'Маржа, EUR',mgp:'Маржа від ціни клієнту',sup:'Постачальник',of:'пропозиція №'}:{hd:['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка'],tot:'ИТОГО',nop:'нет цены',mg:'Маржа, EUR',mgp:'Маржа от цены клиенту',sup:'Поставщик',of:'оферта №'};
+const CLX=()=>{const X=CLX0();X.hd=X.hd.map(Ec);X.mg=Ec(X.mg);return X};
+const CLX0=()=>S.clientLang==='uk'?{hd:['№','Опис','К-сть','Ціна од. EUR','Сума EUR','Ціна пост.','Ціна пост. EUR','Собівартість EUR','Націнка'],tot:'РАЗОМ',nop:'немає ціни',mg:'Маржа, EUR',mgp:'Маржа від ціни клієнту',sup:'Постачальник',of:'пропозиція №'}:{hd:['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка'],tot:'ИТОГО',nop:'нет цены',mg:'Маржа, EUR',mgp:'Маржа от цены клиенту',sup:'Поставщик',of:'оферта №'};
 const partLabel=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+': '+(supOn()?(p.o.supplier||'')+(a?' — ':''):'')+a+' ('+(p.o.currency||'')+')'};
 const partLabelX=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+(a?': '+a:'')+' ('+(p.o.currency||'')+')'};
 const calcSups=()=>{const m=new Map();S.req.items.forEach(it=>{const r=rowInfo(it);chParts(r.ch).forEach(p=>m.set(p.o.id,p.o))});return[...m.values()]};
 const calcTitle=()=>{const u=calcSups(),X=CLX();return S.name+(u.length?'  ·  '+X.sup+': '+u.map(o=>(o.supplier||'')+(o.number?' ('+X.of+o.number+')':'')).join('; '):'')};
 const calcDescMap=()=>{const m={};cliRows().forEach(x=>{m[x.no]=fmtDesc(x.desc)});return m};
 const calcFileBase=()=>{const u=calcSups().map(o=>supTag(o)).filter(x=>x.length>=2),base=safeName(S.name),add=[...new Set(u)].filter(n=>!base.toLowerCase().includes(safeName(n).toLowerCase()));return 'kalkulator_'+base+(add.length?'_'+add.map(safeName).join('_'):'')};
-const docSubs=r=>r.ch&&r.ch.comp?r.ch.parts.map(p=>['','   ↳ '+partLabelX(p),'',fmt(p.cur)+' '+(p.o.currency||''),fmt(p.eur),'','','','']):[];
+const docSubs=r=>r.ch&&r.ch.comp?r.ch.parts.map(p=>['','   ↳ '+partLabelX(p),'',fmt(p.cur)+' '+(p.o.currency||''),fmt(cc(p.eur)),'','','','']):[];
 function compRows(r){
   if(!(r.ch&&r.ch.comp))return'';
   return r.ch.parts.map(p=>`<tr class="subrow"><td></td><td colspan="2" class="hint" style="padding-left:18px">↳ <b>${partKind(p)}</b>${p.lines.some(l=>l.article)?': '+esc([...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ')):''}</td><td class="hint">${supOn()?esc(p.o.supplier):''}</td><td class="num co">${fmt(p.cur)} ${esc(p.o.currency||'')}</td><td class="num co">${fmt(p.eur)}</td><td colspan="4"></td></tr>`).join('')+`<tr class="subrow"><td></td><td colspan="4" class="hint" style="text-align:right">Сумма комплекта, EUR/ед:</td><td class="num co"><b>${fmt(r.cost)}</b></td><td colspan="4"></td></tr>`;
@@ -1246,7 +1308,8 @@ function totals(){
 }
 function calcXlsx(){
   const rows=S.req.items.map(rowInfo),CD=calcDescMap();
-  const A=[['Kalkulator ofertowy MVA'],[calcTitle(),'','','','','','','','','Курс PLN/EUR'],[...CLX().hd,S.rate]];
+  const A=[['Kalkulator ofertowy MVA'],[calcTitle(),'','','','','',calcCur()!=='EUR'?'Курс '+calcCur()+'/EUR':'',calcCur()!=='EUR'?calcFx():'','','Курс PLN/EUR'],[...CLX().hd,S.rate]];
+  const KX=calcCur()!=='EUR'?'*$H$2':'',KV=calcFx();
   const ws=XLSX.utils.aoa_to_sheet(A);
   let r=4;const first=r;
   rows.forEach(x=>{
@@ -1255,15 +1318,15 @@ function calcXlsx(){
     ws['C'+r]={t:'n',v:x.q};
     if(x.ch){
       if(x.ch.comp){ws['G'+r]={t:'n',f:`SUM(G${r+1}:G${r+x.ch.parts.length})`}}
-      else if(cur==='PLN'){ws['F'+r]={t:'n',v:x.ch.cur};ws['G'+r]={t:'n',f:`F${r}/$J$3`}}
-      else if(cur==='EUR'){ws['F'+r]={t:'n',v:0};ws['G'+r]={t:'n',v:r2(x.ch.cur*100)/100}}
-      else{ws['F'+r]={t:'n',v:x.ch.cur};ws['G'+r]={t:'n',v:r2(x.cost*100)/100}}
+      else if(cur==='PLN'){ws['F'+r]={t:'n',v:x.ch.cur};ws['G'+r]={t:'n',f:`F${r}/$J$3${KX}`}}
+      else if(cur==='EUR'){ws['F'+r]={t:'n',v:0};ws['G'+r]=KX?{t:'n',f:`${r2(x.ch.cur*100)/100}${KX}`}:{t:'n',v:r2(x.ch.cur*100)/100}}
+      else{ws['F'+r]={t:'n',v:x.ch.cur};ws['G'+r]=KX?{t:'n',f:`${r2(x.cost*100)/100}${KX}`}:{t:'n',v:r2(x.cost*100)/100}}
       ws['I'+r]={t:'n',v:x.markup};ws['D'+r]={t:'n',f:`ROUND(G${r}*I${r},2)`};ws['E'+r]={t:'n',f:`D${r}*C${r}`};ws['H'+r]={t:'n',f:`G${r}*C${r}`};
     }else{ws['D'+r]={t:'s',v:CLX().nop}}
     r++;
     if(x.ch&&x.ch.comp)x.ch.parts.forEach(p=>{const c2=p.o.currency||'';
       ws['B'+r]={t:'s',v:'     ↳ '+partLabelX(p)};ws['F'+r]={t:'n',v:p.cur};
-      ws['G'+r]=c2==='PLN'?{t:'n',f:`F${r}/$J$3`}:c2==='EUR'?{t:'n',f:`F${r}`}:{t:'n',v:Math.round(p.eur*100)/100};r++});
+      ws['G'+r]=c2==='PLN'?{t:'n',f:`F${r}/$J$3${KX}`}:c2==='EUR'?{t:'n',f:`F${r}${KX}`}:(KX?{t:'n',f:`${Math.round(p.eur*100)/100}${KX}`}:{t:'n',v:Math.round(p.eur*100)/100});r++});
   });
   const last=r-1;
   ws['B'+r]={t:'s',v:CLX().tot};ws['E'+r]={t:'n',f:`SUM(E${first}:E${last})`};ws['H'+r]={t:'n',f:`SUM(H${first}:H${last})`};
@@ -1497,7 +1560,9 @@ async function calcXlsxPretty(){
   ws.columns=[{width:5},{width:70},{width:8},{width:13},{width:14},{width:13},{width:15},{width:17},{width:14},{width:14}];
   const ft=(o={})=>Object.assign({name:XF,size:10},o);
   ws.mergeCells('A1:J1');const a1=ws.getCell('A1');a1.value='Kalkulator ofertowy MVA';a1.font=ft({size:15,bold:true,color:{argb:'FFFFFFFF'}});a1.fill=fillA(NAVY);a1.alignment={vertical:'middle',indent:1};ws.getRow(1).height=28;
-  ws.mergeCells('A2:H2');const a2=ws.getCell('A2');a2.value=calcTitle();a2.font=ft({bold:true});
+  const KX=calcCur()!=='EUR'?'*$H$2':'';
+  ws.mergeCells(KX?'A2:F2':'A2:H2');const a2=ws.getCell('A2');a2.value=calcTitle();a2.font=ft({bold:true});
+  if(KX){const g2=ws.getCell('G2');g2.value='Курс '+calcCur()+' за 1 EUR';g2.font=ft({bold:true,size:9});g2.alignment={horizontal:'right'};const h2=ws.getCell('H2');h2.value=calcFx();h2.numFmt='0.0000';h2.font=ft({bold:true,color:{argb:'FF0000FF'}});h2.fill=fillA('FFFFFF99');h2.border=bdr()}
   ws.getCell('I2').value='Курс PLN/EUR';ws.getCell('I2').font=ft({bold:true,size:9});ws.getCell('I2').alignment={horizontal:'right'};
   const rt=ws.getCell('J2');rt.value=S.rate;rt.numFmt='0.0000';rt.font=ft({bold:true,color:{argb:'FF0000FF'}});rt.fill=fillA('FFFFFF99');rt.border=bdr();
   const hd=CLX().hd;
@@ -1509,12 +1574,12 @@ async function calcXlsxPretty(){
     const set=(col,v,fmt,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fmt)c.numFmt=fmt;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
     set('A',it.no,null,null,'center');set('B',xv(CD[it.no]||(it.name+(it.params?', '+it.params:''))),null,null,'left');set('C',x.q,'0.##',null,'center');
     if(x.ch){
-      if(x.ch.comp){set('F','','#,##0.00','FFFCE4E4');set('G',{formula:`SUM(G${r+1}:G${r+x.ch.parts.length})`,result:x.cost},'#,##0.00','FFFCE4E4')}
-      else if(cur==='PLN'){set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',{formula:`F${r}/$J$2`,result:x.cost},'#,##0.00','FFFCE4E4')}
-      else if(cur==='EUR'){set('F',0,'#,##0.00','FFFCE4E4');set('G',r2(x.ch.cur*100)/100,'#,##0.00','FFFCE4E4')}
-      else{set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',r2(x.cost*100)/100,'#,##0.00','FFFCE4E4')}
+      if(x.ch.comp){set('F','','#,##0.00','FFFCE4E4');set('G',{formula:`SUM(G${r+1}:G${r+x.ch.parts.length})`,result:cc(x.cost)},'#,##0.00','FFFCE4E4')}
+      else if(cur==='PLN'){set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',{formula:`F${r}/$J$2${KX}`,result:cc(x.cost)},'#,##0.00','FFFCE4E4')}
+      else if(cur==='EUR'){set('F',0,'#,##0.00','FFFCE4E4');set('G',KX?{formula:`${r2(x.ch.cur*100)/100}${KX}`,result:cc(x.ch.cur)}:r2(x.ch.cur*100)/100,'#,##0.00','FFFCE4E4')}
+      else{set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',KX?{formula:`${r2(x.cost*100)/100}${KX}`,result:cc(x.cost)}:r2(x.cost*100)/100,'#,##0.00','FFFCE4E4')}
       set('I',x.markup,'0.00');ws.getCell('I'+r).font=ft({color:{argb:'FF0000FF'}});ws.getCell('I'+r).fill=fillA('FFFFFF99');
-      set('D',{formula:`ROUND(G${r}*I${r},2)`,result:x.sale},'#,##0.00','FFE2F0D9');set('E',{formula:`D${r}*C${r}`,result:x.saleT},'#,##0.00','FFE2F0D9');set('H',{formula:`G${r}*C${r}`,result:x.costT},'#,##0.00','FFFCE4E4');
+      set('D',{formula:`ROUND(G${r}*I${r},2)`,result:cc(x.sale)},'#,##0.00','FFE2F0D9');set('E',{formula:`D${r}*C${r}`,result:cc(x.saleT)},'#,##0.00','FFE2F0D9');set('H',{formula:`G${r}*C${r}`,result:cc(x.costT)},'#,##0.00','FFFCE4E4');
       ws.getCell('E'+r).font=ft({bold:true});
     }else{set('D',CLX().nop);ws.getCell('D'+r).font=ft({italic:true,color:{argb:'FFA62B2B'}})}
     ws.getRow(r).height=Math.max(22,14*linesEst(xvPlain(ws.getCell('B'+r).value),70)+6);r++;
@@ -1522,14 +1587,14 @@ async function calcXlsxPretty(){
       ['A','C','D','E','H','I'].forEach(c=>set(c,'',null,GR));
       set('B','     ↳ '+partLabelX(p),null,GR,'left');ws.getCell('B'+r).font=ft({italic:true,color:{argb:'FF555555'}});
       set('F',p.cur,'#,##0.00',GR);
-      if(c2==='PLN')set('G',{formula:`F${r}/$J$2`,result:p.eur},'#,##0.00',GR);else if(c2==='EUR')set('G',{formula:`F${r}`,result:p.eur},'#,##0.00',GR);else set('G',Math.round(p.eur*100)/100,'#,##0.00',GR);
+      if(c2==='PLN')set('G',{formula:`F${r}/$J$2${KX}`,result:cc(p.eur)},'#,##0.00',GR);else if(c2==='EUR')set('G',{formula:`F${r}${KX}`,result:cc(p.eur)},'#,##0.00',GR);else set('G',KX?{formula:`${Math.round(p.eur*100)/100}${KX}`,result:cc(p.eur)}:Math.round(p.eur*100)/100,'#,##0.00',GR);
       r++});});
   const last=r-1;
-  ws.getCell('B'+r).value=CLX().tot;ws.getCell('E'+r).value={formula:`SUM(E${first}:E${last})`,result:totals().sale};ws.getCell('H'+r).value={formula:`SUM(H${first}:H${last})`,result:totals().cost};
+  ws.getCell('B'+r).value=CLX().tot;ws.getCell('E'+r).value={formula:`SUM(E${first}:E${last})`,result:cc(totals().sale)};ws.getCell('H'+r).value={formula:`SUM(H${first}:H${last})`,result:cc(totals().cost)};
   for(let k=1;k<=10;k++){const c=ws.getCell(r,k);c.font=ft({bold:true,size:11});c.fill=fillA(TOTAL);c.border={top:{style:'medium',color:{argb:NAVY}},bottom:{style:'medium',color:{argb:NAVY}}};if(k===5||k===8)c.numFmt='#,##0.00'}
   ws.getCell('B'+r).alignment={horizontal:'right'};
   const t=totals();r+=2;
-  [[CLX().mg,{formula:`E${r-2}-H${r-2}`,result:t.margin},'#,##0.00'],[CLX().mgp,{formula:`IF(E${r-2}=0,0,(E${r-2}-H${r-2})/E${r-2})`,result:t.pct/100},'0.0%']].forEach(([k,v,fm],i)=>{const a=ws.getCell('B'+(r+i));a.value=k;a.font=ft({bold:true});a.alignment={horizontal:'right'};const b=ws.getCell('E'+(r+i));b.value=v;b.numFmt=fm;b.font=ft({bold:true});b.border=bdr()});
+  [[CLX().mg,{formula:`E${r-2}-H${r-2}`,result:cc(t.margin)},'#,##0.00'],[CLX().mgp,{formula:`IF(E${r-2}=0,0,(E${r-2}-H${r-2})/E${r-2})`,result:t.pct/100},'0.0%']].forEach(([k,v,fm],i)=>{const a=ws.getCell('B'+(r+i));a.value=k;a.font=ft({bold:true});a.alignment={horizontal:'right'};const b=ws.getCell('E'+(r+i));b.value=v;b.numFmt=fm;b.font=ft({bold:true});b.border=bdr()});
   const buf=await wb.xlsx.writeBuffer();
   return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
@@ -1556,11 +1621,11 @@ function docOffer(){
   return{title:L.title+(c.number?' № '+c.number:''),meta:[[L.date,dRuF(c.date)],[L.to,c.name],[L.from,fromTxt()]].filter(x=>x[1]),blocks,landscape:false,fit:true};
 }
 function docCalc(){
-  const rows=S.req.items.map(rowInfo),t=totals(),cu=saleCur(),CD=calcDescMap(),sups=calcSups();
-  return{fit:true,title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)+(S.fxAuto!==false?' (НБП'+(S.rateDate?' '+S.rateDate:'')+')':' (задан вручную)')],['Наценка по умолчанию','×'+S.markup],...(sups.length?[['Поставщик',sups.map(o=>(o.supplier||'')+(o.number?' (оферта №'+o.number+')':'')).join('; ')]]:[])],landscape:true,
-   blocks:[{t:'table',head:['№','Позиция','Кол-во','Цена пост.','EUR/ед','Наценка ×','Клиенту/ед, EUR','Сумма клиенту, EUR','Маржа %'],w:[4,47,6,10,8,7,10,11,7],al:['c','l','c','r','r','c','r','r','r'],
-    rows:rows.flatMap(r=>[[r.it.no,CD[r.it.no]||(r.it.name+(r.it.params?', '+r.it.params:'')),fmt(r.q,r.q%1?2:0),chPriceS(r.ch),fmt(r.cost),'×'+r.markup,fmt(r.sale),fmt(r.saleT),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]),total:['Итого, EUR',fmt(t.sale)]},
-    {t:'kv',items:[['Себестоимость, EUR',fmt(t.cost)],['Цена клиенту, EUR',fmt(t.sale)],['Маржа, EUR',fmt(t.margin)],['Маржа от цены клиенту',fmt(t.pct,1)+'%'],...(saleCur()!=='EUR'?[['Цена клиенту, '+cu,fmt(cliTotal(cliRows()))]]:[])].concat(t.miss?[['Позиций без цены',String(t.miss)]]:[])},
+  const rows=S.req.items.map(rowInfo),t=totals(),cu=saleCur(),cu0=calcCur(),CD=calcDescMap(),sups=calcSups();
+  return{fit:true,title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)+(S.fxAuto!==false?' (НБП'+(S.rateDate?' '+S.rateDate:'')+')':' (задан вручную)')],...(cu0!=='EUR'?[['Валюта калькулятора',cu0+' (курс '+fmt(calcFx(),4)+' за 1 EUR)']]:[]),['Наценка по умолчанию','×'+S.markup],...(sups.length?[['Поставщик',sups.map(o=>(o.supplier||'')+(o.number?' (оферта №'+o.number+')':'')).join('; ')]]:[])],landscape:true,
+   blocks:[{t:'table',head:['№','Позиция','Кол-во','Цена пост.',cu0+'/ед','Наценка ×','Клиенту/ед, '+cu0,'Сумма клиенту, '+cu0,'Маржа %'],w:[4,47,6,10,8,7,10,11,7],al:['c','l','c','r','r','c','r','r','r'],
+    rows:rows.flatMap(r=>[[r.it.no,CD[r.it.no]||(r.it.name+(r.it.params?', '+r.it.params:'')),fmt(r.q,r.q%1?2:0),chPriceS(r.ch),fmt(cc(r.cost)),'×'+r.markup,fmt(cc(r.sale)),fmt(cc(r.saleT)),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]),total:['Итого, '+cu0,fmt(cc(t.sale))]},
+    {t:'kv',items:[['Себестоимость, '+cu0,fmt(cc(t.cost))],['Цена клиенту, '+cu0,fmt(cc(t.sale))],['Маржа, '+cu0,fmt(cc(t.margin))],['Маржа от цены клиенту',fmt(t.pct,1)+'%'],...(saleCur()!==cu0?[['Цена клиенту, '+cu,fmt(cliTotal(cliRows()))]]:[])].concat(t.miss?[['Позиций без цены',String(t.miss)]]:[])},
     {t:'p',text:'Внутренний документ. Содержит маржу и курс, клиенту не отправлять.',note:true}]};
 }
 function cmpBlock(){
@@ -2203,8 +2268,9 @@ function vCalc(m){
       <label class="f">Наценка по умолчанию<select id="mk">${mkOpts(S.markup)}</select></label>
       ${supAllHtml()}
       <label class="f">Количество в расчёте<select id="qm"><option value="offer"${S.qtyMode!=='request'?' selected':''}>по предложению поставщика (мин. заказ)</option><option value="request"${S.qtyMode==='request'?' selected':''}>по запросу клиента</option></select></label>
-      <label class="f">Валюта предложения клиенту<select id="sCur">${['EUR','USD','GBP','CNY','PLN'].map(x=>`<option${x===saleCur()?' selected':''}>${x}</option>`).join('')}</select></label>
-      ${[...new Set([...S.offers.map(o=>(o.currency||'').toUpperCase()),saleCur()])].filter(c=>c&&c!=='EUR'&&c!=='PLN').map(c=>`<label class="f">${c} за 1 EUR<input type="number" step="0.0001" data-fxc="${c}" value="${fxTab()[c]!=null?fxTab()[c]:''}"></label>`).join('')}
+      <label class="f">Валюта калькулятора (внутренняя: экран, xlsx, PDF)${curSel('data-ccur',calcCur())}</label>
+      ${saleCurHtml()}
+      ${fxcInputs([...S.offers.map(o=>o.currency),calcCur()])}
     </div>
     ${mkBox()}
     <p class="${S.fxAuto!==false?'stale':'hint'}"><b>Курс в расчёте: ${S.rate} PLN за 1 EUR</b> — ${S.fxAuto!==false?(S.versions&&S.versions.length?'курс НБП '+esc(S.rateDate||'')+', зафиксирован: после сохранения версии КП он не обновляется.':'автоматически из НБП'+(S.rateDate?' на '+esc(S.rateDate):'')+'. Чтобы зафиксировать свой курс, введите его в поле выше.'):'задан вручную, автообновление выключено.'}</p>
@@ -2212,29 +2278,28 @@ function vCalc(m){
     <div class="row2" style="margin-bottom:12px"><button class="btn" id="nbp" type="button">Загрузить курсы НБП (Польша)</button><label class="hint" style="display:flex;gap:6px;align-items:center">Режим курса <select id="fxAuto" style="width:auto"><option value="1"${S.fxAuto!==false?' selected':''}>Авто: на сегодня (НБП) со сверкой по банкам и ЕЦБ</option><option value="0"${S.fxAuto===false?' selected':''}>Вручную (мой курс)</option></select></label><span class="hint">${S.rateDate?'Курсы НБП, таблица A: '+esc(S.rateDate)+'. ':''}Валюты считаются через злотый. Если вы правите курс вручную, автообновление отключается.</span></div>
     <div class="stats">
       ${saleCur()!=='EUR'?`<div class="stat"><b>${fmt(cliTotal(cliRows()))}</b><span>Цена клиенту, ${saleCur()}</span></div>`:''}
-      <div class="stat"><b>${fmt(t.cost)}</b><span>Себестоимость, EUR</span></div>
-      <div class="stat"><b>${fmt(t.sale)}</b><span>Цена клиенту, EUR</span></div>
-      <div class="stat"><b>${fmt(t.margin)}</b><span>Маржа, EUR</span></div>
+      <div class="stat"><b>${fmt(cc(t.cost))}</b><span>Себестоимость, ${calcCur()}</span></div>
+      <div class="stat"><b>${fmt(cc(t.sale))}</b><span>Цена клиенту, ${calcCur()}</span></div>
+      <div class="stat"><b>${fmt(cc(t.margin))}</b><span>Маржа, ${calcCur()}</span></div>
       <div class="stat"><b>${fmt(t.pct,1)}%</b><span>Маржа от цены клиенту</span></div>
     </div>
     ${t.miss?`<p class="stale">Позиций без цены: ${t.miss}. Они не вошли в итог.</p>`:''}
     ${compBox()}
-    <div class="tw"><table class="xt"><thead><tr><th>№</th><th>Позиция</th><th>Кол-во</th><th>Поставщик</th><th>Цена пост.</th><th>EUR/ед</th><th>Наценка ×</th><th>Клиенту/ед</th><th>Сумма клиенту</th><th>Маржа %</th></tr></thead><tbody>
+    <div class="tw"><table class="xt"><thead><tr><th>№</th><th>Позиция</th><th>Кол-во</th><th>Поставщик</th><th>Цена пост.</th><th>${calcCur()}/ед</th><th>Наценка ×</th><th>Клиенту/ед</th><th>Сумма клиенту</th><th>Маржа %</th></tr></thead><tbody>
     ${rows.map(r=>{const it=r.it;return`<tr data-no="${esc(it.no)}"><td>${esc(it.no)}</td><td style="min-width:200px">${esc(it.name)}<div class="hint">${esc(it.params)}</div></td><td class="num"><input type="number" min="0" step="any" data-q value="${r.q}" style="width:84px;text-align:right${r.qSrc==='offer'&&r.qOff!==r.qReq||r.qSrc==='manual'?';border-color:var(--warn)':''}"><div class="hint">запрос: ${fmt(r.qReq,r.qReq%1?2:0)}${r.qOff!=null?' · оферта: '+fmt(r.qOff,r.qOff%1?2:0):''}</div></td>
-    <td>${!supOn()?'':`<select data-sup><option value="none"${(S.rows[it.no]||{}).offerId==='none'?' selected':''}>— пусто (без поставщика)</option>${r.cs.length?r.cs.map(c=>`<option value="${esc(c.o.id)}"${r.ch&&c.o===r.ch.o?' selected':''}>${esc(c.o.supplier)} — ${fmt(c.eur)} EUR${r.b&&c===r.b?' ★':''}</option>`).join(''):'<option>нет цены</option>'}</select>${supMeta(r)}${compCell(r)}`}</td>
-    <td class="num co">${r.ch?esc(chPriceS(r.ch)):'—'}</td><td class="num co">${fmt(r.cost)}</td>
+    <td>${!supOn()?'':`<select data-sup><option value="none"${(S.rows[it.no]||{}).offerId==='none'?' selected':''}>— пусто (без поставщика)</option>${r.cs.length?r.cs.map(c=>`<option value="${esc(c.o.id)}"${r.ch&&c.o===r.ch.o?' selected':''}>${esc(c.o.supplier)} — ${fmt(cc(c.eur))} ${calcCur()}${r.b&&c===r.b?' ★':''}</option>`).join(''):'<option>нет цены</option>'}</select>${supMeta(r)}${compCell(r)}`}</td>
+    <td class="num co">${r.ch?esc(chPriceS(r.ch)):'—'}</td><td class="num co">${fmt(cc(r.cost))}</td>
     <td><select data-mk style="width:96px">${mkOpts(S.rows[it.no]&&num(S.rows[it.no].markup)!=null?S.rows[it.no].markup:'','по умолч.')}</select></td>
-    <td class="num cl">${fmt(r.sale)}</td><td class="num cl">${fmt(r.saleT)}</td><td class="num">${r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'}</td></tr>${compRows(r)}`}).join('')}
-    </tbody><tfoot><tr><td colspan="8">Итого</td><td class="num">${fmt(t.sale)}</td><td class="num">${fmt(t.pct,1)}</td></tr></tfoot></table></div>
+    <td class="num cl">${fmt(cc(r.sale))}</td><td class="num cl">${fmt(cc(r.saleT))}</td><td class="num">${r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'}</td></tr>${compRows(r)}`}).join('')}
+    </tbody><tfoot><tr><td colspan="8">Итого, ${calcCur()}</td><td class="num">${fmt(cc(t.sale))}</td><td class="num">${fmt(t.pct,1)}</td></tr></tfoot></table></div>
     <div class="row2"><button class="btn pri" id="xCalc" type="button">Скачать калькулятор .xlsx</button><button class="btn" id="pCalc" type="button">PDF</button><button class="btn" id="wCalc" type="button" style="display:none" hidden>Word</button><button class="btn" id="resetMk" type="button">Сбросить наценки и количества</button><span class="hint">Файл содержит маржу и курс. Клиенту его не отправляйте, для этого есть вкладка «Оферта клиенту».</span></div>
     ${kitRow()}
   </section>`;
   $('#rate').onchange=e=>{S.rate=num(e.target.value)||S.rate;S.fxAuto=false;changed();renderAll()};
   $('#fxAuto').onchange=e=>{S.fxAuto=e.target.value==='1';changed();if(S.fxAuto){nbpDay=today();loadNbp().then(()=>{S.ai=null;changed();renderAll();toast('Курс обновлён на сегодня')}).catch(()=>toast('Не удалось загрузить курс НБП'))}else renderAll()};
   if(S.fxAuto!==false&&nbpDay!==today()&&!(S.versions&&S.versions.length)){nbpDay=today();loadNbp().then(d=>{S.ai=null;changed();if(tab==='calc'){renderAll();toast('Курсы НБП обновлены: '+d)}}).catch(()=>{})}
-  $('#sCur').onchange=e=>{S.saleCur=e.target.value;changed();renderAll()};
+  bindCurUi(m);
   $('#qm').onchange=e=>{S.qtyMode=e.target.value;changed();renderAll()};
-  m.querySelectorAll('[data-fxc]').forEach(i=>i.onchange=e=>{fxTab()[e.target.dataset.fxc]=num(e.target.value);S.fxAuto=false;S.ai=null;changed();renderAll()});
   $('#nbp').onclick=async()=>{const b=$('#nbp');b.disabled=true;b.textContent='Загружаю…';try{const d=await loadNbp();S.ai=null;changed();toast('Курсы НБП на '+d+' загружены');renderAll()}catch(err){b.disabled=false;b.textContent='Загрузить курсы НБП (Польша)';toast('Не удалось загрузить курсы НБП: '+(err.message||'нет связи')+'. Введите курс вручную.')}};
   $('#mk').onchange=e=>{S.markup=num(e.target.value)||S.markup;changed();renderAll()};
   supAllBind()
@@ -2264,9 +2329,9 @@ function compCell(r){
   if(!r.ch)return'';
   const parts=r.ch.comp?r.ch.parts.slice(1):[];
   const free=r.cs.filter(c=>c.o!==r.ch.o&&!parts.some(p=>p.o===c.o));
-  let h=parts.map(p=>`<div class="hint">+ ${esc(p.o.supplier)} — ${fmt(p.eur)} EUR <a href="#" data-rmc="${esc(p.o.id)}" title="убрать из комплекта">×</a></div>`).join('');
+  let h=parts.map(p=>`<div class="hint">+ ${esc(p.o.supplier)} — ${fmt(cc(p.eur))} ${calcCur()} <a href="#" data-rmc="${esc(p.o.id)}" title="убрать из комплекта">×</a></div>`).join('');
   if(r.ch.lost&&r.ch.lost.length)h+='<div class="hint" style="color:var(--bad,#a62b2b)">Часть комплекта потеряла цену — проверьте.</div>';
-  if(free.length)h+=`<select data-addc style="width:100%;margin-top:3px;font-size:12px"><option value="">+ добавить к комплекту…</option>${free.map(c=>`<option value="${esc(c.o.id)}">${esc(c.o.supplier)} — ${fmt(c.eur)} EUR</option>`).join('')}</select>`;
+  if(free.length)h+=`<select data-addc style="width:100%;margin-top:3px;font-size:12px"><option value="">+ добавить к комплекту…</option>${free.map(c=>`<option value="${esc(c.o.id)}">${esc(c.o.supplier)} — ${fmt(cc(c.eur))} ${calcCur()}</option>`).join('')}</select>`;
   return h;
 }
 function actMapHtml(){
@@ -2503,7 +2568,7 @@ function vCli(m){
     <h2>${L.title}</h2>
     ${langSeg()}
     ${trBox()}${actBox()}${descHint()}${leakBox()}
-    ${S.offers.length>1?`<div class="grid" style="max-width:520px;margin-bottom:8px">${supAllHtml()}</div>`:''}
+    <div class="grid" style="max-width:520px;margin-bottom:8px">${S.offers.length>1?supAllHtml():''}${saleCurHtml()}</div>
     ${cliSupHtml()}
     <p class="sub">Версия для клиента: только цены за единицу и суммы в валюте предложения (${saleCur()}). Маржа, курс и поставщики здесь не показываются и в файл не попадают. Язык переключается кнопками RU / UK вверху.</p>
     <div class="grid" style="margin-bottom:12px">
@@ -2541,6 +2606,7 @@ function vCli(m){
     <div class="row2"><button class="btn pri" id="pDev" type="button">Скачать PDF</button><button class="btn" id="wDev" type="button" style="display:none" hidden>Word</button><button class="btn" id="rDev" type="button">Вернуть автотекст комментариев</button></div>
   </section>`;
   supAllBind();
+  bindCurUi(m);
   const bind=(id,k)=>{$(id).onchange=e=>{S.client[k]=e.target.value;changed();renderTabs()}};
   $('#cFromSel').onchange=e=>{S.client.fromOn=e.target.value==='own';if(S.client.fromOn&&!S.client.from){try{S.client.from=localStorage.getItem('mva_own_name')||''}catch(x){}if(!S.client.from)S.client.from='MVA Industries Sp. z o.o.'}changed();renderAll()};
   {const f=$('#cFrom');if(f)f.onchange=e=>{S.client.from=e.target.value;try{localStorage.setItem('mva_own_name',e.target.value)}catch(x){}changed()}}
@@ -2773,6 +2839,11 @@ $('#pdel').onclick=async()=>{
   try{await removeProject(S.id);await loadList();S=blank();tab='req';renderAll();toast('Проект удалён')}catch(e){toast('Не удалось удалить')}
 };
 $('#bExp').onclick=exportProject;
+$('#bCopy').onclick=copyProject;$('#bPaste').onclick=pasteProject;
+$('#pNo').onclick=()=>$('#pdlg').close();
+$('#pOk').onclick=async()=>{const t=$('#pTxt').value.trim();if(!t){toast('Вставьте текст проекта');return}if(await importText(t,'текст'))$('#pdlg').close()};
+$('#pClip').onclick=async()=>{try{$('#pTxt').value=await navigator.clipboard.readText()}catch(e){toast('Браузер не дал прочитать буфер: вставьте текст в поле вручную')}};
+$('#pTxt').addEventListener('paste',()=>setTimeout(async()=>{const t=$('#pTxt').value.trim();if(t.includes('"offers"')&&t.length>200&&await importText(t,'текст'))$('#pdlg').close()},50));
 $('#bDir').onclick=connectFolder;
 $('#bImp').onchange=e=>{const f=[...e.target.files];e.target.value='';if(f.length)importFiles(f)};
 $('#bSet').onclick=openSettings;
