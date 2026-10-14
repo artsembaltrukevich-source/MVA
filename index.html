@@ -574,7 +574,7 @@ async function openProject(id){
     let d=null;
     if(dirH&&dirOK){try{d=await dirRead(id);base[id]=d.updated||0}catch(e){}}
     if(!d&&idb)d=await idbGet(id);
-    if(!d)return;await releaseLock();S=Object.assign(blank(),d);tab='req';renderAll();await ensureLock(S.id);
+    if(!d)return;await releaseLock();S=Object.assign(blank(),d);repairOwnCalc(S);tab='req';renderAll();await ensureLock(S.id);
   }catch(e){toast('Не удалось открыть проект')}
 }
 async function removeProject(id){
@@ -616,13 +616,24 @@ async function exportAll(){
   else if(idb){cur=await idbAll()}
   saveFile('mva_backup_'+today()+'.json',JSON.stringify({app:'mva-zayavki',version:1,projects:cur}));
 }
+/* старые проекты: наш калькулятор, ошибочно прочитанный ИИ как оферта (строки «↳ Привід»/«ОПЦІЯ» стали строками оферты, цены клиентские) */
+function repairOwnCalc(p){
+  let n=0;
+  (p.offers||[]).forEach(o=>{
+    if(o.ownFix||!Array.isArray(o.lines)||!o.lines.some(l=>/^\s*↳/.test(l.desc||'')))return;
+    const mk=num(p.markup)>0?num(p.markup):1.3;
+    o.lines=o.lines.filter(l=>!/^\s*↳/.test(l.desc||'')&&!l.opt);
+    o.lines.forEach(l=>{l.variant='';l.act='';if(num(l.price)>0)l.price=r2(num(l.price)/mk)});
+    Object.keys(p.rows||{}).forEach(k=>{const r=p.rows[k];if(r&&r.var&&r.var[o.id]!==undefined){delete r.var[o.id];if(!Object.keys(r.var).length)delete r.var}});
+    o.ownFix=true;o.notes=((o.notes||'')+' Исправлено автоматически: наш калькулятор, прочитанный старой версией. Цены пересчитаны в закупочные EUR (клиентская цена ÷ наценка). Для оригинальных цен в PLN загрузите файл заново.').trim();n++});
+  return n}
 async function importText(text,srcName){
   let n=0;
   try{
     const j=JSON.parse(String(text).trim());
     const list=(j.projects||(j.project?[j.project]:(j.id&&j.offers?[j]:[]))).filter(p=>p&&p.id&&Array.isArray(p.offers));
     for(const p of list){
-      const q=Object.assign(blank(),p);
+      const q=Object.assign(blank(),p);if(repairOwnCalc(q))setTimeout(()=>toast('В проекте исправлена оферта, прочитанная из нашего калькулятора (строки привода и опций убраны, цены вернулись к закупочным). Для цен в PLN загрузите файл калькулятора заново.'),400);
       const exists=(dbh&&projects.some(x=>x.id===q.id))||(S&&S.id===q.id);
       if(exists){
         const rep=list.length===1&&confirm('Проект «'+(q.name||'')+'» уже есть на этом устройстве.\n\nОК — заменить его присланной версией.\nОтмена — сохранить как отдельную копию.');
@@ -1174,7 +1185,16 @@ async function loadNbp(){
   verifyRate().then(()=>{if(tab==='calc')renderAll()}).catch(()=>{});
   return j.effectiveDate;
 }
+function ownCalcOffer(text,fname){
+  if(String(text).indexOf('(это наш калькулятор:')<0)return null;
+  const rows=String(text).split('\n').filter(l=>/^\d+ \| /.test(l)&&/ \| (PLN|EUR)$/.test(l)).map(l=>{const a=l.split(' | '),cur=a.pop(),price=num(a.pop()),qty=num(a.pop()),no=a.shift();return{no,desc:a.join(' | '),qty,price,cur}}).filter(x=>x.price>0);
+  if(!rows.length)return null;
+  const its=S.req?S.req.items.map(i=>i.no):[],all=rows.every(x=>its.includes(x.no)),byIdx=!all&&its.length===rows.length;
+  const pln=rows.filter(x=>x.cur==='PLN').length>=rows.length/2,cur=pln?'PLN':'EUR',rate=S.rate||4.3;
+  return{id:uid(),file:fname,supplier:fname.replace(/\.(xlsx|xls|xlsm)$/i,'').replace(/^[a-f0-9]{8}-\d+_/i,'').replace(/^kalkulator_?(OFERT_)?/i,'')||fname,number:'',date:'',currency:cur,fx:null,basis:'net',validityText:'',validityDate:'',payment:'',deliveryText:'',incoterms:'',notes:'Прочитано напрямую из нашего калькулятора (без ИИ): цены поставщика за 1 шт.',docTotal:null,
+    lines:rows.map((x,k)=>({id:uid(),item:all?x.no:byIdx?its[k]:(its.includes(x.no)?x.no:''),variant:'',article:'',desc:x.desc,act:'',dRu:S.clientLang==='uk'?'':x.desc,dUk:S.clientLang==='uk'?x.desc:'',qty:x.qty,unit:'шт.',price:x.cur===cur?x.price:(cur==='PLN'?r2(x.price*rate):r2(x.price/rate)),lead:'',leadDays:null,note:'',code:'',equip:[],opt:false}))}}
 async function parseOffer(text,fname,signal,prog){
+  {const ow=ownCalcOffer(text,fname);if(ow){S.offers.push(ow);S.ai=null;toast('Наш калькулятор прочитан напрямую, без ИИ: '+ow.lines.length+' позиций, цены поставщика ('+ow.currency+')');return}}
   const reqList=S.req?S.req.items.map(i=>`${i.no} | ${i.name} | ${i.qty==null?'':i.qty} ${i.unit||''} | ${(i.params||'').slice(0,220)}`).join('\n'):'(запрос не загружен)';
   const p=`Ты помощник инженера по закупкам. Ниже текст предложения поставщика (польский, английский, немецкий или другой язык) и список позиций запроса клиента. Извлеки данные предложения и сопоставь строки с позициями запроса.
 Верни только JSON: {"supplier":string,"number":string,"date":string,"currency":"EUR"|"PLN"|"USD"|string,"price_basis":"net"|"gross"|"unknown","document_total":number|null,"validity_text":string,"validity_date":string|null,"payment":string,"delivery_text":string,"incoterms":string,"notes":string,"lines":[{"item":string|null,"variant":string,"article":string,"description":string,"description_cl":string,"qty":number|null,"unit":string,"unit_price":number|null,"line_total":number|null,"lead_text":string,"lead_days":number|null,"note":string,"actuator":"included"|"excluded"|"not_mentioned","order_code":string,"equipment":[{"code":string,"meaning":string}]}]}
