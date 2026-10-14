@@ -1465,6 +1465,7 @@ function e8Plain(ws,end){for(let i=4;i<=end;i++){const f=ws['F'+i],g=ws['G'+i],h
   ['D','E'].forEach(c=>{if(ws[c+i])ws[c+i]=sh(ws[c+i])});
   [['F',nf],['G',h],['H',ii]].forEach(([c,v])=>{if(v)ws[c+i]=sh(v);else delete ws[c+i]});
   delete ws['I'+i];delete ws['J'+i]}}
+const calcSheetName=()=>{const n=[...new Set(calcSups().map(o=>String(o.supplier||'').trim().split(/[\s,]+/)[0]).filter(Boolean))].join('+').replace(/[\\\/?*\[\]:]/g,'').slice(0,31);return n||'Kalkulator ofertowy MVA'};
 function calcXlsx(){
   const rows=S.req.items.map(rowInfo),CD=calcDescMap();
   const E8=calcE8(),HDL=E8?e8hd():CLX().hd;
@@ -1502,7 +1503,7 @@ function calcXlsx(){
   {const sp=orphOpts();if(sp.length){r+=2;ws['B'+r]={t:'s',v:optHdr()};r++;optGroups(sp).forEach(g=>{ws['B'+r]={t:'s',v:'— '+g.title+' —'};r++;g.items.forEach(wrP)})}}
   {const cb=calcCodeAoA();if(cb.length){r+=2;cb.forEach(b=>{ws['B'+r]={t:'s',v:b.title};r++;ws['B'+r]={t:'s',v:b.head[0]};ws['C'+r]={t:'s',v:b.head[1]};r++;b.rows.forEach(x=>{ws['B'+r]={t:'s',v:x[0]};ws['C'+r]={t:'s',v:x[1]};r++});r++})}}
   if(E8)e8Plain(ws,r);ws['!ref']=`A1:${E8?'J':'K'}${r}`;ws['!cols']=E8?[{wch:5},{wch:70},{wch:8},{wch:12},{wch:12},{wch:14},{wch:12},{wch:9},{wch:9},{wch:9}]:[{wch:5},{wch:70},{wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:16},{wch:9},{wch:9},{wch:9}];
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Kalkulator ofertowy MVA');if(dwgPositions().length)dwgSheetX(wb);return xblob(wb);
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,calcSheetName());if(dwgPositions().length)dwgSheetX(wb);return xblob(wb);
 }
 
 /* ---------- step 4: client offer ---------- */
@@ -1817,7 +1818,7 @@ async function cliXlsxPretty(){
 async function calcXlsxPretty(){
   const EJ=await loadExcelJS();const rows=S.req.items.map(rowInfo),CD=calcDescMap();
   const wb=new EJ.Workbook();wb.creator='MVA Industries';
-  const ws=wb.addWorksheet('Kalkulator ofertowy MVA',{views:[{state:'frozen',ySplit:3,showGridLines:false}],pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  const ws=wb.addWorksheet(calcSheetName(),{views:[{state:'frozen',ySplit:3,showGridLines:false}],pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}});
   ws.columns=[{width:5},{width:70},{width:8},{width:13},{width:14},{width:13},{width:15},{width:17},{width:14},{width:14}];
   const ft=(o={})=>Object.assign({name:XF,size:10},o);
   ws.mergeCells('A1:J1');const a1=ws.getCell('A1');a1.value='Kalkulator ofertowy MVA';a1.font=ft({size:15,bold:true,color:{argb:'FFFFFFFF'}});a1.fill=fillA(NAVY);a1.alignment={vertical:'middle',indent:1};ws.getRow(1).height=28;
