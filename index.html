@@ -142,6 +142,13 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 #idlg .tabname{display:inline-block;background:var(--accent-soft);border-radius:4px;padding:1px 8px;font-weight:600}
 #idlg .idhead{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
 .warn{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:8px 10px;font-size:12.5px}
+.dwg2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.dwg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.dwf{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.dwf input,.dwf select{width:100%;min-width:0}
+.dwth{position:relative;display:inline-block}
+.dwth img{height:92px;border:1px solid var(--line);border-radius:6px;cursor:zoom-in;display:block}
+.dwth .btn{position:absolute;top:2px;right:2px;padding:0 7px;min-height:22px;line-height:20px}
 </style>
 </head><body>
 <div class="wrap">
@@ -352,7 +359,7 @@ const today=()=>new Date().toISOString().slice(0,10);
 /* ---------- state ---------- */
 function blank(){return{id:uid(),name:'Новый проект',clientLang:'ru',rate:4.3,rateDate:'',fxAuto:true,fxs:{},saleCur:'EUR',markup:1.2,reqText:'',req:null,tr:{},offers:[],rows:{},client:{name:'',number:'',date:today(),validity:'',delivery:'',payment:'',incoterms:'',auto:false},status:{state:'Новый запрос',nextStep:'',nextDate:'',log:[],inq:[]},invoices:[],ai:null,updated:Date.now()}}
 let S=blank(), tab='req', projects=[], dbh=null, uidv=null, ctl=null, delArmed=false;
-const TABS=[['req','Запрос'],['off','Предложения'],['calc','Калькулятор'],['cli','Оферта клиенту'],['rep','Отчёт'],['inv','Фактуры'],['cmp','Сравнение версий']];
+const TABS=[['req','Запрос'],['off','Предложения'],['dwg','Чертежи и подбор'],['calc','Калькулятор'],['cli','Оферта клиенту'],['rep','Отчёт'],['inv','Фактуры'],['cmp','Сравнение версий']];
 
 /* ---------- сохранение: папка на диске + кэш в браузере ---------- */
 let idb=null,dirH=null,dirOK=false;const base={};
@@ -580,7 +587,7 @@ async function removeProject(id){
 }
 function setSave(t){const e=$('#savest');if(e)e.textContent=t}
 /* файл проекта: обмен между коллегами */
-const projText=()=>JSON.stringify({app:'mva-zayavki',version:1,project:S});
+const projText=strip=>JSON.stringify({app:'mva-zayavki',version:1,project:S},strip?(k,v)=>(k==='data'&&typeof v==='string'&&v.startsWith('data:image')?'':v):undefined);
 const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 async function exportProject(){
   const name='mva_'+safeName(S.name)+'.json',txt=projText();
@@ -591,7 +598,7 @@ async function exportProject(){
   saveFile(name,txt);
 }
 async function copyProject(){
-  const t=projText();
+  const t=projText(true);
   try{await navigator.clipboard.writeText(t);toast('Проект скопирован ('+Math.round(t.length/1024)+' КБ). На другом устройстве нажмите «Вставить проект»');return}catch(e){}
   try{const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.focus();a.select();a.setSelectionRange(0,t.length);const ok=document.execCommand('copy');a.remove();if(ok){toast('Проект скопирован. На другом устройстве нажмите «Вставить проект»');return}}catch(e){}
   openPaste(t);toast('Не удалось скопировать сам: выделите текст в окне и скопируйте вручную');
@@ -827,10 +834,12 @@ function validWarn(){
   });
   return out;
 }
+const OPT_RE=/(не\s+вход[ия]т[ь]?\s+(у|в)\s+(підсумок|итог|сумму)|↳\s*ОПЦ|not\s+included\s+in\s+(the\s+)?total)/iu;
+const optTxt=t=>OPT_RE.test(String(t||''));
 function sumWarn(){
   const out=[];
   S.offers.forEach(o=>{
-    const ls=o.lines.filter(l=>!l.opt);
+    const ls=o.lines.filter(l=>!l.opt&&!optTxt(l.desc));
     if(o.docTotal==null){out.push({sev:'info',text:`Оферта «${o.supplier}»: итог документа не найден, сверить сумму строк нечем.`});return}
     if(!ls.length||ls.some(l=>num(l.qty)==null||num(l.price)==null)){out.push({sev:'ask',text:`Оферта «${o.supplier}»: у части строк нет количества или цены, сумму с итогом документа (${fmt(o.docTotal)} ${o.currency||''}) сверить нельзя.`});return}
     const calc=ls.reduce((s,l)=>s+num(l.qty)*num(l.price),0),diff=Math.abs(calc-o.docTotal);
@@ -1153,7 +1162,7 @@ async function parseOffer(text,fname,signal,prog){
   const reqList=S.req?S.req.items.map(i=>`${i.no} | ${i.name} | ${i.qty==null?'':i.qty} ${i.unit||''} | ${(i.params||'').slice(0,220)}`).join('\n'):'(запрос не загружен)';
   const p=`Ты помощник инженера по закупкам. Ниже текст предложения поставщика (польский, английский, немецкий или другой язык) и список позиций запроса клиента. Извлеки данные предложения и сопоставь строки с позициями запроса.
 Верни только JSON: {"supplier":string,"number":string,"date":string,"currency":"EUR"|"PLN"|"USD"|string,"price_basis":"net"|"gross"|"unknown","document_total":number|null,"validity_text":string,"validity_date":string|null,"payment":string,"delivery_text":string,"incoterms":string,"notes":string,"lines":[{"item":string|null,"variant":string,"article":string,"description":string,"description_cl":string,"qty":number|null,"unit":string,"unit_price":number|null,"line_total":number|null,"lead_text":string,"lead_days":number|null,"note":string,"actuator":"included"|"excluded"|"not_mentioned","order_code":string,"equipment":[{"code":string,"meaning":string}]}]}
-Правила: ничего не выдумывай; чего нет в документе, оставляй "" или null. Цены числами с точкой. variant: если в документе для одной позиции запроса предложено НЕСКОЛЬКО ВАРИАНТОВ на выбор (wariant 1 / wariant 2, Variant A/B, alternative, Option), укажи номер или букву варианта ("1", "2", "A"), строки одной позиции из разных вариантов НЕ должны суммироваться; иначе "". Каждая строка позиции документа = одна строка JSON со своей ценой за единицу, не дублируй одну и ту же цену в нескольких строках. actuator (электро- или пневмопривод, редуктор с приводом) для каждой строки: "included" если привод предложен и описан в этой строке или в цене; "excluded" если в документе ПРЯМО сказано, что привода нет или он не входит в цену; "not_mentioned" если о приводе в строке ничего не сказано. document_total: итоговая сумма оферты без НДС в том виде, как она напечатана в документе (не вычисляй сама, иначе null). description: description_cl: тот же ПОЛНЫЙ текст описания, переведённый на ${S.clientLang==='uk'?'украинский':'русский'} язык: точная профессиональная терминология арматуры, приводов и КИПиА, каждая характеристика, без сокращений и пропусков; артикулы, модели, обозначения (DN, PN, EN, ISO, ATEX, RAL, SOFT, FIRE SAFE и т.п.), числа и единицы оставляй без изменений. ${trStyle(S.clientLang)} ПОЛНОЕ описание позиции (поле description) ДОСЛОВНО на языке оригинала, со всеми пунктами, маркерами и параметрами (тип изделия, исполнение, материал, среда, температура, строительная длина, покрытие, присоединение и т.д.), без сокращений, пересказа, многоточий и пропусков; разрывы строк и маркеры списка заменяй на «; ». Не сокращай описание, даже если оно длинное. Если указана только сумма по строке, заполни line_total и оставь unit_price null. item: номер позиции запроса, к которой относится строка (по артикулу, типоразмеру, описанию), иначе null. Если на одну позицию приходится несколько строк (арматура и привод, комплект), выдай каждую строку отдельно с тем же item. validity_date в формате ГГГГ-ММ-ДД, если срок действия указан датой или его можно вычислить от даты предложения. lead_days: срок в календарных днях (недели × 7). order_code и equipment заполняй только если в предложении есть полный заказной код изделия и расшифровка его сегментов (так оформляют AUMA: «Kod», «Opis wyposażenia»): order_code — полный код дословно, equipment — каждая строка расшифровки отдельно в порядке документа, code — сегмент кода дословно, meaning — его описание дословно на языке документа, плюс первой строкой модель и тип изделия, а также данные «Połączenie z armaturą», «Zakres momentu», «Nastawa», «Zasilanie», вес, если они есть. Иначе order_code пустая строка, equipment пустой массив. Не включай в lines итоговые суммы, транспорт и НДС; если есть доставка, укажи её в notes. price_basis: gross только если явно сказано, что цены с НДС/брутто.
+Правила: ничего не выдумывай; чего нет в документе, оставляй "" или null. Цены числами с точкой. ЕСЛИ документ — это наш собственный калькулятор (заголовки «Kalkulator ofertowy MVA», «РАЗОМ MVA», «Netto PLN після знижки постачальника», «Ціна пост.»): ценой поставщика является ТОЛЬКО колонка «Netto PLN після знижки постачальника» / «Ціна пост.» (валюта PLN, если так подписано), а колонки «Ціна за 1 шт.», «РАЗОМ MVA», «Сума» — наши цены клиенту с наценкой, их брать нельзя; строки «↳ …» и «ОПЦІЯ (не входить у підсумок…)» пропускай; блоки «Повний опис привода» не включай в строки. variant: если в документе для одной позиции запроса предложено НЕСКОЛЬКО ВАРИАНТОВ на выбор (wariant 1 / wariant 2, Variant A/B, alternative, Option), укажи номер или букву варианта ("1", "2", "A"), строки одной позиции из разных вариантов НЕ должны суммироваться; иначе "". Каждая строка позиции документа = одна строка JSON со своей ценой за единицу, не дублируй одну и ту же цену в нескольких строках. actuator (электро- или пневмопривод, редуктор с приводом) для каждой строки: "included" если привод предложен и описан в этой строке или в цене; "excluded" если в документе ПРЯМО сказано, что привода нет или он не входит в цену; "not_mentioned" если о приводе в строке ничего не сказано. document_total: итоговая сумма оферты без НДС в том виде, как она напечатана в документе (не вычисляй сама, иначе null). description: description_cl: тот же ПОЛНЫЙ текст описания, переведённый на ${S.clientLang==='uk'?'украинский':'русский'} язык: точная профессиональная терминология арматуры, приводов и КИПиА, каждая характеристика, без сокращений и пропусков; артикулы, модели, обозначения (DN, PN, EN, ISO, ATEX, RAL, SOFT, FIRE SAFE и т.п.), числа и единицы оставляй без изменений. ${trStyle(S.clientLang)} ПОЛНОЕ описание позиции (поле description) ДОСЛОВНО на языке оригинала, со всеми пунктами, маркерами и параметрами (тип изделия, исполнение, материал, среда, температура, строительная длина, покрытие, присоединение и т.д.), без сокращений, пересказа, многоточий и пропусков; разрывы строк и маркеры списка заменяй на «; ». Не сокращай описание, даже если оно длинное. Если указана только сумма по строке, заполни line_total и оставь unit_price null. item: номер позиции запроса, к которой относится строка (по артикулу, типоразмеру, описанию), иначе null. Если на одну позицию приходится несколько строк (арматура и привод, комплект), выдай каждую строку отдельно с тем же item. validity_date в формате ГГГГ-ММ-ДД, если срок действия указан датой или его можно вычислить от даты предложения. lead_days: срок в календарных днях (недели × 7). order_code и equipment заполняй только если в предложении есть полный заказной код изделия и расшифровка его сегментов (так оформляют AUMA: «Kod», «Opis wyposażenia»): order_code — полный код дословно, equipment — каждая строка расшифровки отдельно в порядке документа, code — сегмент кода дословно, meaning — его описание дословно на языке документа, плюс первой строкой модель и тип изделия, а также данные «Połączenie z armaturą», «Zakres momentu», «Nastawa», «Zasilanie», вес, если они есть. Иначе order_code пустая строка, equipment пустой массив. Не включай в lines итоговые суммы, транспорт и НДС; если есть доставка, укажи её в notes. price_basis: gross только если явно сказано, что цены с НДС/брутто.
 
 ПОЗИЦИИ ЗАПРОСА (№ | наименование | кол-во | параметры):
 ${reqList}
@@ -1166,7 +1175,7 @@ ${clip(text,150000)}`;
   const o={id:uid(),file:fname,supplier:r.supplier||fname,number:r.number||'',date:r.date||'',currency:cur,fx:null,basis:r.price_basis||'unknown',validityText:r.validity_text||'',validityDate:r.validity_date||'',payment:r.payment||'',deliveryText:r.delivery_text||'',incoterms:r.incoterms||'',notes:r.notes||'',docTotal:num(r.document_total),
     lines:r.lines.map(l=>{const q=num(l.qty);let pr=num(l.unit_price);const lt=num(l.line_total);if(pr==null&&lt!=null&&q)pr=r2(lt/q);
       const it=l.item==null?'':String(l.item);
-      return{id:uid(),item:S.req&&S.req.items.some(x=>x.no===it)?it:'',variant:String(l.variant||'').trim(),article:l.article||'',desc:l.description||'',act:l.actuator==='included'?'in':l.actuator==='excluded'?'out':'',dRu:S.clientLang==='uk'?'':fixUnits(l.description_cl),dUk:S.clientLang==='uk'?fixUnits(l.description_cl):'',qty:q,unit:l.unit||'',price:pr,lead:l.lead_text||'',leadDays:num(l.lead_days),note:l.note||'',code:l.order_code||'',equip:Array.isArray(l.equipment)?l.equipment.map(e=>({code:String(e.code||''),txt:String(e.meaning||'')})).filter(e=>e.code||e.txt):[],opt:false}})};
+      return{id:uid(),item:S.req&&S.req.items.some(x=>x.no===it)?it:'',variant:String(l.variant||'').trim(),article:l.article||'',desc:l.description||'',act:l.actuator==='included'?'in':l.actuator==='excluded'?'out':'',dRu:S.clientLang==='uk'?'':fixUnits(l.description_cl),dUk:S.clientLang==='uk'?fixUnits(l.description_cl):'',qty:q,unit:l.unit||'',price:pr,lead:l.lead_text||'',leadDays:num(l.lead_days),note:l.note||'',code:l.order_code||'',equip:Array.isArray(l.equipment)?l.equipment.map(e=>({code:String(e.code||''),txt:String(e.meaning||'')})).filter(e=>e.code||e.txt):[],opt:optTxt(l.description)}})};
   if(both.b&&Array.isArray(both.b.lines)){o.verify={by:both.by,diffs:diffOffer(r,both.b)};o.verifyRaw=both.b.lines.map(l=>({article:l.article||'',qty:num(l.qty),price:num(l.unit_price)!=null?num(l.unit_price):(num(l.line_total)!=null&&num(l.qty)?r2(num(l.line_total)/num(l.qty)):null)}));o.verifyCur=both.b.currency||'';o.verifyBasis=both.b.price_basis||''}
   else if(both.note)o.verify={note:both.note,diffs:[]};
   if(o.verify&&o.verify.diffs.length)toast('Сверка двумя ИИ: расхождений '+o.verify.diffs.length+' в оферте «'+o.supplier+'».');
@@ -1246,7 +1255,7 @@ function supMeta(r){
   return chParts(r.ch).map(p=>{const ld=p.lines.map(l=>l.leadDays).filter(x=>x!=null),lt=ld.length?Math.max(...ld)+' дн.':(p.lines.map(l=>l.lead).filter(Boolean)[0]||'');
     return`<div class="hint">${esc([p.o.number?'оферта №'+p.o.number:'',_arts(p),lt].filter(Boolean).join(' · '))}</div>`+(p.variants?`<label class="hint" title="В оферте несколько вариантов этой позиции: цены вариантов не суммируются, считается один">Вариант: <select data-var="${esc(p.o.id)}" style="font-size:12px;width:auto">${p.variants.map(v=>`<option value="${esc(v.v)}"${v.v===p.variant?' selected':''}>${esc(v.v)}${v.bad?' (нет цены)':' — '+fmt(v.cur)+' '+esc(p.o.currency||'')}</option>`).join('')}</select></label>`:'')}).join('');
 }
-const partKind=p=>hasAct(p.lines)?(S.clientLang==='uk'?'Привід':'Привод'):'Арматура';
+const partKind=p=>(isActCand(p)||(p.lines||[]).some(l=>l.equip&&l.equip.length))?(S.clientLang==='uk'?'Привід':'Привод'):'Арматура';
 const CLX=()=>{const X=CLX0();X.hd=X.hd.map(Ec);X.mg=Ec(X.mg);return X};
 const CLX0=()=>S.clientLang==='uk'?{hd:['№','Опис','К-сть','Ціна од. EUR','Сума EUR','Ціна пост.','Ціна пост. EUR','Собівартість EUR','Націнка'],tot:'РАЗОМ',nop:'немає ціни',mg:'Маржа, EUR',mgp:'Маржа від ціни клієнту',sup:'Постачальник',of:'пропозиція №'}:{hd:['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка'],tot:'ИТОГО',nop:'нет цены',mg:'Маржа, EUR',mgp:'Маржа от цены клиенту',sup:'Поставщик',of:'оферта №'};
 const partLabel=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+': '+(supOn()?offName(p.o)+(a?' — ':''):'')+a+' ('+(p.o.currency||'')+')'+(p.variant?' · вар. '+p.variant:'')};
@@ -1317,13 +1326,46 @@ function repBaseFor(o){return 'otchet_'+safeName(S.name)+'_'+supTag(o)}
 function withSup(o,fn){RPT_SUP=o;try{return fn()}finally{RPT_SUP=null}}
 /* наценка: на позицию (ручная) > на оферту поставщика > по умолчанию */
 function mkFor(it,o){const rw=S.rows[it.no]||{};if(num(rw.markup)!=null)return num(rw.markup);if(o&&num(o.markup)!=null&&num(o.markup)>0)return num(o.markup);return num(S.markup)||1}
+const ACT_D=/^(napęd|napęd|привод|привід|actuator|електропривод|електропривід|электропривод|antrieb)/i,ACT_A=/^(SAR?Ex?|SQR?Ex?|SA|SQ|AUMA)\b/i;
+const actLine=l=>ACT_D.test(String(l.desc||'').trim())||ACT_A.test(String(l.article||'').trim());
+const isActCand=c=>!!(c&&c.lines&&c.lines.length&&c.lines.every(actLine));
+const wantsAct=it=>/електропривод|электропривод|з\s+приводом|с\s+приводом|electric\s+actuator|with\s+actuator|привод/i.test((it.name||'')+' '+(it.params||''));
+/* выбор производителей на весь проект: арматура от A, привод от B (в строке можно переопределить) */
+function autoKit(it,cs){
+  const K=S.kit||{},act=wantsAct(it);
+  const byId=id=>id&&id!=='none'?cs.find(c=>c.o.id===id):null;
+  const mn=a=>a.reduce((m,c)=>!m||c.eur<m.eur?c:m,null);
+  const A=byId(K.a);
+  let valve=A||(act?mn(cs.filter(c=>!isActCand(c))):null);
+  let ac=null;
+  if(K.b==='none')ac=null;
+  else if(K.b){const B=byId(K.b);if(B&&(!valve||B.o!==valve.o))ac=B}
+  else if(act)ac=mn(cs.filter(isActCand));
+  if(ac&&!valve)valve=mn(cs.filter(c=>c.o!==ac.o));
+  if(!valve&&!ac)return null;
+  if(ac&&valve&&ac.o===valve.o)ac=null;
+  if(!act&&!K.a&&!K.b)return null;
+  return{valve,act:ac}
+}
+function kitBar(){
+  if(S.offers.length<2)return'';
+  const K=S.kit||{},K0={mode:S.kitMode},o2=(sel,none)=>S.offers.map(o=>`<option value="${esc(o.id)}"${sel===o.id?' selected':''}>${esc(offName(o))}${o.number&&!offName(o).includes(o.number)?' №'+esc(o.number):''}</option>`).join('');
+  const manual=Object.values(S.rows).filter(r=>r&&(r.offerId||(Array.isArray(r.add)&&r.add.length))).length;
+  return`<div class="card" style="margin:10px 0"><b>Какие производители в расчёте</b>
+    <p class="hint">Выберите, от кого арматура и от кого привод. Это действует на весь проект сразу, цена «самого дешёвого» не подставляется. Для отдельной позиции выбор можно изменить в столбце «Поставщик». Чтобы получить два расчёта (например BROEN + AUMA и EFAR + AUMA), переключите выбор и скачайте файл для каждого варианта.</p>
+    <div class="row2"><label>Арматура от<select id="kitA"><option value="">— по каждой позиции отдельно (самая дешёвая)</option>${o2(K.a)}</select></label>
+    <label>Привод от<select id="kitB"><option value=""${!K.b?' selected':''}>— автоматически (самая дешёвая оферта с приводом)</option><option value="none"${K.b==='none'?' selected':''}>— не добавлять привод</option>${o2(K.b)}</select></label>
+    <label>Как показывать комплект<select id="kitMode"><option value="sep"${K0.mode!=='one'?' selected':''}>арматура и привод отдельными строками (привод под арматурой)</option><option value="one"${K0.mode==='one'?' selected':''}>одним комплектом (одна цена)</option></select></label>
+    ${manual?`<button class="btn" id="kitReset" type="button">Сбросить ручной выбор в строках (${manual})</button>`:''}</div></div>`
+}
 function rowInfo(it){
   const rw=S.rows[it.no]||{},cs=cands(it.no).filter(x=>x.eur!=null),b=best(it.no);
-  const none=rw.offerId==='none';let ch=rw.offerId&&!none?cs.find(x=>x.o.id===rw.offerId):null;if(!ch&&!none)ch=b;
+  const none=rw.offerId==='none';const kit=!RPT_SUP&&!none&&!rw.offerId&&rw.add===undefined?autoKit(it,cs):null;let ch=rw.offerId&&!none?cs.find(x=>x.o.id===rw.offerId):null;if(!ch&&!none)ch=(kit&&kit.valve)||b;
+  const addL=Array.isArray(rw.add)&&rw.add.length?rw.add:(kit&&kit.act?[kit.act.o.id]:[]);
   if(RPT_SUP)ch=cs.find(x=>x.o===RPT_SUP)||null;
-  if(ch&&!RPT_SUP&&Array.isArray(rw.add)&&rw.add.length){
+  if(ch&&!RPT_SUP&&addL.length){
     const parts=[ch],lost=[];
-    for(const id of rw.add){const p=cs.find(x=>x.o.id===id);if(p&&p.o!==ch.o&&!parts.some(y=>y.o===p.o))parts.push(p);else if(!p)lost.push(id)}
+    for(const id of addL){const p=cs.find(x=>x.o.id===id);if(p&&p.o!==ch.o&&!parts.some(y=>y.o===p.o))parts.push(p);else if(!p)lost.push(id)}
     if(parts.length>1){const cu=new Set(parts.map(p=>p.o.currency||''));
       ch={o:ch.o,comp:true,parts,lost,lines:parts.flatMap(p=>p.lines),eur:parts.reduce((s,p)=>s+p.eur,0),cur:cu.size===1?parts.reduce((s,p)=>s+p.cur,0):null}}
     else if(lost.length)ch=Object.assign({},ch,{lost})}
@@ -1341,6 +1383,11 @@ function totals(){
   optInc().forEach(x=>{c+=x.costTE;s+=x.saleTE});
   return{cost:c,sale:s,margin:s-c,pct:s?(s-c)/s*100:0,miss};
 }
+function calcCodeAoA(){
+  const uk=S.clientLang==='uk',out=[];
+  codeBlocks().forEach(b=>{const rows=[];b.lines.forEach(l=>{const eq=l.equip.map(e=>[e.code||'',codeTxt(e)||e.txt||'']).filter(x=>x[0]||x[1]);if(!eq.length)return;if(l.code)rows.push([uk?'Повний код':'Полный код',l.code]);rows.push(...eq)});
+    if(rows.length)out.push({title:(uk?'Повний опис привода (за кодами) — поз. ':'Полное описание привода (по кодам) — поз. ')+b.no,head:[uk?'Код':'Код',uk?'Розшифрування':'Расшифровка'],rows})});
+  return out}
 function calcXlsx(){
   const rows=S.req.items.map(rowInfo),CD=calcDescMap();
   const A=[['Kalkulator ofertowy MVA'],[calcTitle(),'','','','','',calcCur()!=='EUR'?'Курс '+calcCur()+'/EUR':'',calcCur()!=='EUR'?calcFx():'','','Курс PLN/EUR'],[...CLX().hd,S.rate]];
@@ -1349,13 +1396,13 @@ function calcXlsx(){
   let r=4;const first=r;
   rows.forEach(x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
-    if(isSplit(x)){splitParts(x).forEach((pt,k)=>wrP({no:k?'':it.no,dd:(k?'     ↳ ':'')+(CD[k?it.no+'.'+k:it.no]||partLabelX(pt.p)),desc:'',qty:x.q,cur:(pt.o.currency||'').toUpperCase(),p0:pt.cur,eurU:pt.eur,mk:mkFor(it,pt.o)}));return}
+    if(isSplit(x)){splitParts(x).forEach((pt,k)=>wrP({no:k?'':it.no,dd:(k?'     ↳ ':'')+splitLbl(CD,it,k,pt),desc:'',qty:x.q,cur:(pt.o.currency||'').toUpperCase(),p0:pt.cur,eurU:pt.eur,mk:mkFor(it,pt.o)}));return}
     ws['A'+r]={t:'s',v:it.no};ws['B'+r]={t:'s',v:CD[it.no]||(it.name+(it.params?', '+it.params:''))};
     ws['C'+r]={t:'n',v:x.q};
     if(x.ch){
       if(x.ch.comp){ws['G'+r]={t:'n',f:`SUM(G${r+1}:G${r+x.ch.parts.length})`}}
       else if(cur==='PLN'){ws['F'+r]={t:'n',v:x.ch.cur};ws['G'+r]={t:'n',f:`F${r}/$J$3${KX}`}}
-      else if(cur==='EUR'){ws['F'+r]={t:'n',v:0};ws['G'+r]=KX?{t:'n',f:`${r2(x.ch.cur*100)/100}${KX}`}:{t:'n',v:r2(x.ch.cur*100)/100}}
+      else if(cur==='EUR'){ws['G'+r]=KX?{t:'n',f:`${r2(x.ch.cur*100)/100}${KX}`}:{t:'n',v:r2(x.ch.cur*100)/100}}
       else{ws['F'+r]={t:'n',v:x.ch.cur};ws['G'+r]=KX?{t:'n',f:`${r2(x.cost*100)/100}${KX}`}:{t:'n',v:r2(x.cost*100)/100}}
       const mixP=x.ch.comp&&new Set(x.ch.parts.map(p=>mkFor(it,p.o))).size>1;
       ws['I'+r]={t:'n',v:x.markup};ws['D'+r]={t:'n',f:mixP?x.ch.parts.map((p,k)=>`ROUND(G${r+1+k}*I${r+1+k},2)`).join('+'):`ROUND(G${r}*I${r},2)`};ws['E'+r]={t:'n',f:`D${r}*C${r}`};ws['H'+r]={t:'n',f:`G${r}*C${r}`};
@@ -1372,8 +1419,9 @@ function calcXlsx(){
   const last=r-1;
   ws['B'+r]={t:'s',v:CLX().tot};ws['E'+r]={t:'n',f:`SUM(E${first}:E${last})`};ws['H'+r]={t:'n',f:`SUM(H${first}:H${last})`};
   {const sp=optCalc();if(sp.length){r+=2;ws['B'+r]={t:'s',v:'Опции поставщика (в итог не входят)'};r++;sp.forEach(wrP)}}
+  {const cb=calcCodeAoA();if(cb.length){r+=2;cb.forEach(b=>{ws['B'+r]={t:'s',v:b.title};r++;ws['B'+r]={t:'s',v:b.head[0]};ws['C'+r]={t:'s',v:b.head[1]};r++;b.rows.forEach(x=>{ws['B'+r]={t:'s',v:x[0]};ws['C'+r]={t:'s',v:x[1]};r++});r++})}}
   ws['!ref']=`A1:J${r}`;ws['!cols']=[{wch:5},{wch:70},{wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:16},{wch:9},{wch:14}];
-  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Kalkulator ofertowy MVA');return xblob(wb);
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Kalkulator ofertowy MVA');if(dwgPositions().length)dwgSheetX(wb);return xblob(wb);
 }
 
 /* ---------- step 4: client offer ---------- */
@@ -1494,7 +1542,7 @@ ${trStyle(S.clientLang)}
   if(!r||!Array.isArray(r.items))throw{message:'Описания не получены'};
   r.items.forEach(x=>{const k=String(x.no);S.rows[k]=Object.assign(S.rows[k]||{},{desc:String(x.desc||''),descAi:true})});
 }
-function codeBlocks(){return S.req.items.map(it=>{const r=rowInfo(it);const ls=r.ch?r.ch.lines.filter(l=>l.equip&&l.equip.length):[];return ls.length?{no:it.no,name:it.name,qty:it.qty,lines:ls}:null}).filter(Boolean)}
+function codeBlocks(){return S.req.items.map(it=>{const r=rowInfo(it);const ls=r.ch?(r.ch.comp&&r.ch.parts?r.ch.parts.flatMap(q=>q.lines||[]):(r.ch.lines||[])).filter(l=>l.equip&&l.equip.length):[];return ls.length?{no:it.no,name:it.name,qty:it.qty,lines:ls}:null}).filter(Boolean)}
 async function genCodes(signal,prog){
   const lang=S.clientLang==='uk'?'украинском':'русском';const bl=codeBlocks();
   if(!bl.length)throw{message:'В выбранных предложениях нет расшифровки кодов. Загрузите оферту AUMA с разделом «Dane techniczne».'};
@@ -1517,7 +1565,10 @@ function splitParts(r){
   if(r.ch.lines&&r.ch.lines.length>1){const f=fxOf(r.ch.o);if(f>0&&r.ch.lines.every(l=>num(l.price)!=null))return r.ch.lines.map(l=>({o:r.ch.o,lines:[l],eur:num(l.price)/f,cur:num(l.price),p:{o:r.ch.o,lines:[l]}}))}
   return[];
 }
-const isSplit=r=>!!(r&&(S.rows[r.it.no]||{}).split&&splitParts(r).length>1);
+const kitMix=r=>{const ps=splitParts(r);return ps.length>1&&ps.some(p=>partKind(p.p)!=='Арматура')&&ps.some(p=>partKind(p.p)==='Арматура')};
+const isSplit=r=>{if(!r)return false;const ps=splitParts(r);if(ps.length<2)return false;const v=(S.rows[r.it.no]||{}).split;if(v!==undefined&&v!==null)return !!v;return S.kitMode!=='one'&&kitMix(r)};
+const splitNo=(it,k)=>k?it.no+'.'+k:it.no;
+function splitLbl(CD,it,k,pt){const key=splitNo(it,k);return CD[key]?CD[key]+(k?offTag(pt.o):''):partLabelX(pt.p)}
 function cliRows(){const sx=saleFx(),out=[];S.req.items.forEach(it=>{const r=rowInfo(it);
   if(isSplit(r)){
     splitParts(r).forEach((pt,k)=>{
@@ -1525,6 +1576,10 @@ function cliRows(){const sx=saleFx(),out=[];S.req.items.forEach(it=>{const r=row
       const sale=r2(pt.eur*mkFor(it,pt.o)),pr=r2(sale*sx);
       let dsc=(S.rows[no]&&S.rows[no].desc)||(k===0?(text.length>=25?text:defDesc(it)+(text?' ('+text+')':'')):(text||partKind(pt.p)));
       dsc=stripMakers(dsc);
+      {const ps=splitParts(r),kd=ps.map(q=>partKind(q.p)!=='Арматура'),uk=S.clientLang==='uk';
+       if(kd.some(Boolean)&&kd.some(x=>!x)){const bi=kd.findIndex(x=>!x),bno=splitNo(it,bi);
+         if(kd[k]){const pre=(uk?'Привід до поз. ':'Привод к поз. ')+bno+': ';if(!dsc.startsWith(pre))dsc=pre+dsc}
+         else{const refs=ps.map((q,j)=>kd[j]?splitNo(it,j):null).filter(Boolean).join(', ');const t=(uk?'Привід — поз. ':'Привод — поз. ')+refs;if(!dsc.includes(t))dsc=dsc.replace(/[\s.;,]+$/,'')+'. '+t}}}
       out.push({no,base:it.no,part:pt.p,desc:dsc,qty:r.q,unit:it.unit,price:pr,sum:r2(pr*r.q)});
     });
     return;
@@ -1538,7 +1593,7 @@ function cliRows(){const sx=saleFx(),out=[];S.req.items.forEach(it=>{const r=row
   return out}
 function splitCell(r){
   if(!r||!r.ch||splitParts(r).length<2)return'';
-  return`<label class="hint" style="display:block;margin-top:4px;cursor:pointer" title="В предложении клиенту арматура и привод будут отдельными строками (поз. ${esc(r.it.no)} и ${esc(r.it.no)}.1) с отдельными ценами. Итог не меняется."><input type="checkbox" data-split${isSplit(r)?' checked':''}> привод отдельной позицией в КП</label>`;
+  return`<label class="hint" style="display:block;margin-top:4px;cursor:pointer" title="В предложении клиенту арматура и привод будут отдельными строками (поз. ${esc(r.it.no)} и ${esc(r.it.no)}.1) с отдельными ценами; в строках указано, к какой позиции относится привод. Итог не меняется."><input type="checkbox" data-split${isSplit(r)?' checked':''}> привод отдельной строкой под арматурой</label>`;
 }
 const cliTotal=rows=>rows.reduce((a,x)=>a+(x.sum||0),0);
 /* опции поставщика (строки с пометкой «опция»): отдельный блок для клиента, в итог не входят */
@@ -1689,13 +1744,13 @@ async function calcXlsxPretty(){
   let r=4;const first=r;
   rows.forEach(x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
-    if(isSplit(x)){splitParts(x).forEach((pt,k)=>{const mk=mkFor(it,pt.o),uE=r2(pt.eur*mk);wrPP({no:k?'':it.no,dd:(k?'     ↳ ':'')+(CD[k?it.no+'.'+k:it.no]||partLabelX(pt.p)),desc:'',qty:x.q,cur:(pt.o.currency||'').toUpperCase(),p0:pt.cur,eurU:pt.eur,mk,uE,saleTE:uE*x.q,costTE:pt.eur*x.q})});return}
+    if(isSplit(x)){splitParts(x).forEach((pt,k)=>{const mk=mkFor(it,pt.o),uE=r2(pt.eur*mk);wrPP({no:k?'':it.no,dd:(k?'     ↳ ':'')+splitLbl(CD,it,k,pt),desc:'',qty:x.q,cur:(pt.o.currency||'').toUpperCase(),p0:pt.cur,eurU:pt.eur,mk,uE,saleTE:uE*x.q,costTE:pt.eur*x.q})});return}
     const set=(col,v,fmt,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fmt)c.numFmt=fmt;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
     set('A',it.no,null,null,'center');set('B',xv(CD[it.no]||(it.name+(it.params?', '+it.params:''))),null,null,'left');set('C',x.q,'0.##',null,'center');
     if(x.ch){
       if(x.ch.comp){set('F','','#,##0.00','FFFCE4E4');set('G',{formula:`SUM(G${r+1}:G${r+x.ch.parts.length})`,result:cc(x.cost)},'#,##0.00','FFFCE4E4')}
       else if(cur==='PLN'){set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',{formula:`F${r}/$J$2${KX}`,result:cc(x.cost)},'#,##0.00','FFFCE4E4')}
-      else if(cur==='EUR'){set('F',0,'#,##0.00','FFFCE4E4');set('G',KX?{formula:`${r2(x.ch.cur*100)/100}${KX}`,result:cc(x.ch.cur)}:r2(x.ch.cur*100)/100,'#,##0.00','FFFCE4E4')}
+      else if(cur==='EUR'){set('F',null,'#,##0.00','FFFCE4E4');set('G',KX?{formula:`${r2(x.ch.cur*100)/100}${KX}`,result:cc(x.ch.cur)}:r2(x.ch.cur*100)/100,'#,##0.00','FFFCE4E4')}
       else{set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',KX?{formula:`${r2(x.cost*100)/100}${KX}`,result:cc(x.cost)}:r2(x.cost*100)/100,'#,##0.00','FFFCE4E4')}
       const mixP=x.ch.comp&&new Set(x.ch.parts.map(p=>mkFor(it,p.o))).size>1;
       set('I',x.markup,'0.00');ws.getCell('I'+r).font=ft({color:{argb:'FF0000FF'}});ws.getCell('I'+r).fill=fillA('FFFFFF99');
@@ -1724,6 +1779,11 @@ async function calcXlsxPretty(){
   const t=totals();r+=2;
   [[CLX().mg,{formula:`E${r-2}-H${r-2}`,result:cc(t.margin)},'#,##0.00'],[CLX().mgp,{formula:`IF(E${r-2}=0,0,(E${r-2}-H${r-2})/E${r-2})`,result:t.pct/100},'0.0%']].forEach(([k,v,fm],i)=>{const a=ws.getCell('B'+(r+i));a.value=k;a.font=ft({bold:true});a.alignment={horizontal:'right'};const b=ws.getCell('E'+(r+i));b.value=v;b.numFmt=fm;b.font=ft({bold:true});b.border=bdr()});
   {const sp=optCalc();if(sp.length){r+=3;ws.mergeCells(`A${r}:J${r}`);const oh=ws.getCell('A'+r);oh.value='Опции поставщика (в итог не входят)';oh.font=ft({bold:true,color:{argb:NAVY}});r++;sp.forEach(x=>wrPP(x))}}
+  {const cb=calcCodeAoA();if(cb.length){r+=2;cb.forEach(b=>{
+    ws.mergeCells(`B${r}:J${r}`);const th=ws.getCell('B'+r);th.value=b.title;th.font=ft({bold:true,color:{argb:'FFFFFFFF'}});th.fill=fillA(NAVY);ws.getRow(r).height=20;r++;
+    [b.head].concat(b.rows).forEach((x,i)=>{ws.mergeCells(`C${r}:J${r}`);const a=ws.getCell('B'+r),t=ws.getCell('C'+r);a.value=x[0];t.value=x[1];[a,t].forEach(c=>{c.font=ft({bold:i===0||/^(Повний код|Полный код)$/.test(x[0])});c.border=bdr();c.alignment={vertical:'top',wrapText:true};if(i===0)c.fill=fillA(TOTAL)});
+      ws.getRow(r).height=Math.max(16,13*Math.ceil(String(x[1]||'').length/105)+4);r++});r++})}}
+  if(dwgPositions().length)dwgSheetEJ(wb);
   const buf=await wb.xlsx.writeBuffer();
   return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
@@ -1754,7 +1814,7 @@ function docCalc(){
   const rows=S.req.items.map(rowInfo),t=totals(),cu=saleCur(),cu0=calcCur(),CD=calcDescMap(),sups=calcSups();
   return{fit:true,title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)+(S.fxAuto!==false?' (НБП'+(S.rateDate?' '+S.rateDate:'')+')':' (задан вручную)')],...(cu0!=='EUR'?[['Валюта калькулятора',cu0+' (курс '+fmt(calcFx(),4)+' за 1 EUR)']]:[]),['Наценка по умолчанию','×'+S.markup],...(sups.length?[['Поставщик',sups.map(o=>(o.supplier||'')+(o.number?' (оферта №'+o.number+')':'')).join('; ')]]:[])],landscape:true,
    blocks:[{t:'table',head:['№','Позиция','Кол-во','Цена пост.',cu0+'/ед','Наценка ×','Клиенту/ед, '+cu0,'Сумма клиенту, '+cu0,'Маржа %'],w:[4,47,6,10,8,7,10,11,7],al:['c','l','c','r','r','c','r','r','r'],
-    rows:rows.flatMap(r=>isSplit(r)?splitParts(r).map((pt,k)=>{const mk=mkFor(r.it,pt.o),uE=r2(pt.eur*mk);return[k?'':r.it.no,(k?'   ↳ ':'')+(CD[k?r.it.no+'.'+k:r.it.no]||partLabelX(pt.p)),fmt(r.q,r.q%1?2:0),fmt(pt.cur)+' '+(pt.o.currency||''),fmt(cc(pt.eur)),'×'+mk,fmt(cc(uE)),fmt(cc(uE*r.q)),fmt((uE-pt.eur)/uE*100,1)]}):[[r.it.no,CD[r.it.no]||(r.it.name+(r.it.params?', '+r.it.params:'')),fmt(r.q,r.q%1?2:0),chPriceS(r.ch),fmt(cc(r.cost)),'×'+(+r.markup.toFixed(3)),fmt(cc(r.sale)),fmt(cc(r.saleT)),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]).concat(optInc().concat(optCalc()).map(x=>[x.no==null?'Опц.':x.no,optTag(x)+x.desc,fmt(x.qty,x.qty%1?2:0),fmt(x.p0)+' '+x.cur,fmt(cc(x.eurU)),'×'+x.mk,fmt(cc(x.uE)),fmt(cc(x.saleTE)),fmt((x.uE-x.eurU)/x.uE*100,1)])),total:['Итого, '+cu0,fmt(cc(t.sale))]},
+    rows:rows.flatMap(r=>isSplit(r)?splitParts(r).map((pt,k)=>{const mk=mkFor(r.it,pt.o),uE=r2(pt.eur*mk);return[k?'':r.it.no,(k?'   ↳ ':'')+splitLbl(CD,r.it,k,pt),fmt(r.q,r.q%1?2:0),fmt(pt.cur)+' '+(pt.o.currency||''),fmt(cc(pt.eur)),'×'+mk,fmt(cc(uE)),fmt(cc(uE*r.q)),fmt((uE-pt.eur)/uE*100,1)]}):[[r.it.no,CD[r.it.no]||(r.it.name+(r.it.params?', '+r.it.params:'')),fmt(r.q,r.q%1?2:0),chPriceS(r.ch),fmt(cc(r.cost)),'×'+(+r.markup.toFixed(3)),fmt(cc(r.sale)),fmt(cc(r.saleT)),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]).concat(optInc().concat(optCalc()).map(x=>[x.no==null?'Опц.':x.no,optTag(x)+x.desc,fmt(x.qty,x.qty%1?2:0),fmt(x.p0)+' '+x.cur,fmt(cc(x.eurU)),'×'+x.mk,fmt(cc(x.uE)),fmt(cc(x.saleTE)),fmt((x.uE-x.eurU)/x.uE*100,1)])),total:['Итого, '+cu0,fmt(cc(t.sale))]},
     {t:'kv',items:[['Себестоимость, '+cu0,fmt(cc(t.cost))],['Цена клиенту, '+cu0,fmt(cc(t.sale))],['Маржа, '+cu0,fmt(cc(t.margin))],['Маржа от цены клиенту',fmt(t.pct,1)+'%'],...(saleCur()!==cu0?[['Цена клиенту, '+cu,fmt(cliTotal(cliRows()))]]:[])].concat(t.miss?[['Позиций без цены',String(t.miss)]]:[])},
     {t:'p',text:'Внутренний документ. Содержит маржу и курс, клиенту не отправлять.',note:true}]};
 }
@@ -2253,6 +2313,7 @@ function tabState(k){
   if(k==='req')return{done:has,sub:has?S.req.items.length+' поз.':'загрузить'};
   if(k==='off')return{done:S.offers.length>0,sub:S.offers.length?S.offers.length+' оферт':'нет'};
   if(k==='cmp')return{done:false,sub:CMPR?'готово':''};
+  if(k==='dwg'){const n=dwgPositions().length,f=Object.values(S.dwg||{}).reduce((a,d)=>a+((d&&d.files)||[]).length,0);return{done:n>0,sub:n?n+' проверено':(f?f+' файл.':'необязательно')}}
   if(k==='st'){const s=S.status.state;return{done:s==='Закрыт'||s==='Доставлено клиенту',sub:s}}
   if(k==='inv'){const v=S.invoices,o=v.filter(x=>invState(x)==='over').length,u=v.filter(x=>invState(x)!=='paid').length;return{done:v.length>0&&!u,sub:v.length?(o?o+' просрочено':u?u+' не оплачено':'все оплачены'):'нет'}}
   if(!has)return{done:false,sub:''};
@@ -2264,7 +2325,7 @@ function tabState(k){
 function renderTabs(){
   $('#rail').innerHTML=TABS.map(([k,l],i)=>{const s=tabState(k);return`<button type="button" data-tab="${k}"${tab===k?' aria-current="step"':''}><span class="n${s.done?' done':''}">${s.done?'✓':i+1}</span><span>${l}<small>${esc(s.sub)}</small></span></button>`}).join('');
 }
-function renderAll(){renderHeader();renderTabs();const m=$('#main');({req:vReq,off:vOff,calc:vCalc,cli:vCli,rep:vRep,st:vSt,inv:vInv,cmp:vCmp}[tab])(m)}
+function renderAll(){renderHeader();renderTabs();const m=$('#main');({req:vReq,off:vOff,dwg:vDwg,calc:vCalc,cli:vCli,rep:vRep,st:vSt,inv:vInv,cmp:vCmp}[tab])(m)}
 const langSeg=()=>`<div class="row2"><span class="hint">Язык клиента:</span><span class="seg" role="group" aria-label="Язык клиента"><button type="button" data-lang="ru" aria-pressed="${S.clientLang==='ru'}">RU</button><button type="button" data-lang="uk" aria-pressed="${S.clientLang==='uk'}">UK</button></span></div>`;
 function needReq(m,txt){m.innerHTML=`<section class="card"><h2>Сначала загрузите запрос</h2><p class="sub">${txt}</p><button class="btn pri" data-go="req" type="button">К запросу</button></section>`}
 
@@ -2418,6 +2479,7 @@ function vCalc(m){
       <div class="stat"><b>${fmt(t.pct,1)}%</b><span>Маржа от цены клиенту</span></div>
     </div>
     ${t.miss?`<p class="stale">Позиций без цены: ${t.miss}. Они не вошли в итог.</p>`:''}
+    ${kitBar()}
     ${compBox()}
     <div class="tw"><table class="xt"><thead><tr><th>№</th><th>Позиция</th><th>Кол-во</th><th>Поставщик</th><th>Цена пост.</th><th>${calcCur()}/ед</th><th>Наценка ×</th><th>Клиенту/ед</th><th>Сумма клиенту</th><th>Маржа %</th></tr></thead><tbody>
     ${rows.map(r=>{const it=r.it;return`<tr data-no="${esc(it.no)}"><td>${esc(it.no)}</td><td style="min-width:200px">${esc(it.name)}<div class="hint">${esc(it.params)}</div></td><td class="num"><input type="number" min="0" step="any" data-q value="${r.q}" style="width:84px;text-align:right${r.qSrc==='offer'&&r.qOff!==r.qReq||r.qSrc==='manual'?';border-color:var(--warn)':''}"><div class="hint">запрос: ${fmt(r.qReq,r.qReq%1?2:0)}${r.qOff!=null?' · оферта: '+fmt(r.qOff,r.qOff%1?2:0):''}</div></td>
@@ -2451,6 +2513,9 @@ function vCalc(m){
     tr.querySelectorAll('[data-rmc]').forEach(a=>a.onclick=ev=>{ev.preventDefault();const rw=S.rows[no];rw.add=(rw.add||[]).filter(x=>x!==a.dataset.rmc);S.client.auto=false;S.ai=null;changed();renderAll()});
     tr.querySelector('[data-q]').onchange=e=>{const v=e.target.value.trim();S.rows[no]=Object.assign(S.rows[no]||{},{qty:v===''?null:num(v)});S.client.auto=false;changed();renderAll()};
     tr.querySelector('[data-mk]').onchange=e=>{S.rows[no]=Object.assign(S.rows[no]||{},{markup:e.target.value===''?null:num(e.target.value)});changed();renderAll()}});
+  {const ka=$('#kitA'),kb=$('#kitB');if(ka){const upd=()=>{S.kit={a:ka.value,b:kb.value};S.client.auto=false;S.ai=null;changed();renderAll()};ka.onchange=upd;kb.onchange=upd}
+   const km=$('#kitMode');if(km)km.onchange=()=>{S.kitMode=km.value;Object.values(S.rows).forEach(r=>{if(r)delete r.split});S.client.auto=false;S.ai=null;changed();renderAll()};
+   const kr=$('#kitReset');if(kr)kr.onclick=()=>{Object.values(S.rows).forEach(r=>{if(r){delete r.offerId;delete r.add}});S.client.auto=false;S.ai=null;changed();renderAll()}}
   {const go=$('#cbGo');if(go)go.onclick=()=>{const A=$('#cbA').value,B=$('#cbB').value;if(A===B){toast('Выберите две разные оферты');return}let n=0;
     S.req.items.forEach(it=>{const cs=cands(it.no).filter(x=>x.eur!=null);if(cs.some(x=>x.o.id===A)&&cs.some(x=>x.o.id===B)){S.rows[it.no]=Object.assign(S.rows[it.no]||{},{offerId:A,add:[B]});n++}});
     S.client.auto=false;S.ai=null;changed();renderAll();toast(n?'Комплектов собрано: '+n:'Нет позиций, где есть цены в обеих офертах (проверьте привязку строк на вкладке «Предложения»)')};
@@ -2957,6 +3022,157 @@ function vInv(m){
   m.querySelectorAll('tr[data-vi] [data-vf]').forEach(inp=>inp.onchange=e=>{const v=all[+e.target.closest('tr').dataset.vi],f=e.target.dataset.vf;v[f]=['amount','paid'].includes(f)?num(e.target.value):(f==='cur'?e.target.value.trim().toUpperCase():e.target.value);changed();renderAll()});
   m.querySelectorAll('[data-vpay]').forEach(b=>b.onclick=()=>{const v=all[+b.dataset.vpay];v.paid=num(v.amount)||0;v.paidDate=today();addLog('Фактура '+(v.number||'без номера')+' ('+(v.party||'—')+') оплачена');changed();renderAll()});
   m.querySelectorAll('[data-vdel]').forEach(b=>b.onclick=()=>{all.splice(+b.dataset.vdel,1);changed();renderAll()});
+}
+
+
+/* ---------- чертежи и проверка подбора ---------- */
+const FLG={F03:36,F04:42,F05:50,F07:70,F10:102,F12:125,F14:140,F16:165,F25:254,F30:298,F35:356,F40:406,F48:483,F60:603};
+const flSet=t=>{const s=new Set();String(t||'').replace(/F\s?-?(\d{2})/gi,(m,d)=>{s.add('F'+d)});return[...s]};
+const DW_V=[['fl','Фланец арматуры (ISO 5211 / 5210)','text','F10 или F10/F12'],['sh','Вал / шток арматуры','sel'],['shA','Размер: сторона □ или Ø, мм','number'],['key','Шпонка / примечание','text','напр. 8×7'],['T','Макс. момент арматуры (рабочий), Нм','number'],['Tmax','Допустимый момент арматуры (MAST), Нм','number'],['turns','Число оборотов на ход (многооборотный)','number'],['time','Требуемое время хода, с','number']];
+const DW_A=[['type','Привод (тип)','text','напр. SQEx 14.2'],['fl','Фланец привода','text','F14/F16'],['bore','Макс. Ø отверстия / вала (Б-тип), мм','number'],['stem','Макс. Ø штока (тип A), мм','number'],['Tmin','Момент привода мин., Нм','number'],['Tmax','Момент привода макс., Нм','number'],['Tset','Момент отключения (задаётся), Нм','number'],['rpm','Скорость на выходе, об/мин (многооборотный)','number'],['t90','Время хода на 90°, с (неполноповоротный)','number']];
+const dwgRow=no=>{S.dwg=S.dwg||{};const d=S.dwg[no]=S.dwg[no]||{};d.files=d.files||[];d.v=d.v||{};d.a=d.a||{};d.ai=d.ai||[];if(d.k==null)d.k=1.3;return d};
+const dwgHas=d=>d&&(Object.values(d.v||{}).some(x=>x!==''&&x!=null)||Object.values(d.a||{}).some(x=>x!==''&&x!=null));
+function dwgCheck(no){
+  const d=(S.dwg||{})[no];if(!d||!dwgHas(d))return null;
+  const Tx=(ru,uk)=>S.clientLang==='uk'?uk:ru,v=d.v||{},a=d.a||{},k=num(d.k)||1.3,out=[];
+  const add=(n,st,vv,av,note)=>out.push({n,st,vv:vv||'',av:av||'',note:note||''});
+  const fv=flSet(v.fl),fa=flSet(a.fl),std=v.sh==='stem'?'ISO 5210':'ISO 5211';
+  const LN={fl:Tx('Присоединительный фланец ('+std+')','Приєднувальний фланець ('+std+')'),sh:Tx('Вал / шток','Вал / шток'),t:Tx('Момент (с запасом)','Момент (із запасом)'),ts:Tx('Момент отключения','Момент вимкнення'),tm:Tx('Время хода','Час ходу')};
+  if(fv.length&&fa.length){const c=fv.filter(x=>fa.includes(x));
+    if(c.length)add(LN.fl,'ok',fv.join('/'),fa.join('/'),c[0]+(FLG[c[0]]?' (PCD '+FLG[c[0]]+' '+Tx('мм','мм')+')':'')+Tx(' совпадает',' збігається'));
+    else add(LN.fl,'bad',fv.join('/'),fa.join('/'),Tx('не совпадает: нужен переходной фланец или другой привод','не збігається: потрібен перехідний фланець або інший привід'));
+  }else add(LN.fl,'na',fv.join('/'),fa.join('/'),Tx('укажите фланец арматуры и привода','вкажіть фланець арматури та приводу'));
+  const A=num(v.shA);
+  if(A){
+    if(v.sh==='stem'){const m=num(a.stem);
+      add(LN.sh,m?(A<=m?'ok':'bad'):'na',Tx('шток Ø','шток Ø')+A+' '+Tx('мм','мм'),m?Tx('проход до Ø','прохід до Ø')+m+' '+Tx('мм','мм'):'',m?(A<=m?Tx('шток проходит в полый вал','шток проходить у порожнистий вал'):Tx('шток не проходит: нужен привод с большим проходом или отдельный упор','шток не проходить: потрібен привід з більшим проходом')):Tx('укажите макс. Ø штока привода','вкажіть макс. Ø штока приводу'));
+    }else if(v.sh==='key'){const m=num(a.bore);
+      add(LN.sh,m?(A<=m?'ok':'bad'):'na',Tx('вал Ø','вал Ø')+A+' '+Tx('мм','мм')+(v.key?', '+Tx('шпонка ','шпонка ')+v.key:''),m?Tx('отверстие до Ø','отвір до Ø')+m+' '+Tx('мм','мм'):'',m?(A<=m?Tx('вал входит в отверстие; шпонку и посадку подтвердить у производителя','вал входить у отвір; шпонку й посадку підтвердити у виробника'):Tx('вал больше отверстия привода','вал більший за отвір приводу')):Tx('укажите макс. Ø отверстия привода','вкажіть макс. Ø отвору приводу'));
+    }else{const m=num(a.bore),dg=A*Math.SQRT2;
+      add(LN.sh,m?(dg<=m+1e-9?'ok':'bad'):'na','□ '+A+' '+Tx('мм','мм')+' ('+Tx('диагональ','діагональ')+' '+fmt(dg,1)+')',m?Tx('отверстие до Ø','отвір до Ø')+m+' '+Tx('мм','мм'):'',m?(dg<=m+1e-9?Tx('диагональ квадрата ≤ макс. Ø отверстия; вставку/втулку подтвердить у производителя','діагональ квадрата ≤ макс. Ø отвору; вставку/втулку підтвердити у виробника'):Tx('диагональ квадрата больше макс. Ø отверстия','діагональ квадрата більша за макс. Ø отвору')):Tx('укажите макс. Ø отверстия привода','вкажіть макс. Ø отвору приводу'));
+    }
+  }else add(LN.sh,'na','','',Tx('укажите размер вала/штока арматуры','вкажіть розмір вала/штока арматури'));
+  const T=num(v.T),Tm=num(a.Tmax),Tn=num(a.Tmin),Ts=num(a.Tset),Tv=num(v.Tmax);
+  if(T&&Tm){const q=Tm/T;add(LN.t,q>=k?'ok':(q>=1?'warn':'bad'),T+' '+Tx('Нм','Нм')+' × '+k+' = '+fmt(T*k,0),Tx('до ','до ')+Tm+' '+Tx('Нм','Нм'),Tx('запас ','запас ')+fmt(q,2)+(q>=k?'':Tx(' — меньше требуемого ',' — менше потрібного ')+k)+(Tn&&T<Tn?Tx('; момент арматуры ниже мин. момента привода','; момент арматури нижчий за мін. момент приводу'):''))}
+  else add(LN.t,'na',T?T+' Нм':'',Tm?Tm+' Нм':'',Tx('укажите момент арматуры и макс. момент привода','вкажіть момент арматури та макс. момент приводу'));
+  if(Ts){const bad=[],warn=[];if(Tv&&Ts>Tv)bad.push(Tx('выше допустимого момента арматуры ','вище допустимого моменту арматури ')+Tv);if(Tm&&Ts>Tm)bad.push(Tx('выше макс. момента привода','вище макс. моменту приводу'));if(Tn&&Ts<Tn)bad.push(Tx('ниже мин. момента привода','нижче мін. моменту приводу'));if(T&&Ts<T*k)warn.push(Tx('ниже момента арматуры с запасом ','нижче моменту арматури із запасом ')+fmt(T*k,0));
+    add(LN.ts,bad.length?'bad':warn.length?'warn':'ok',Tv?'≤ '+Tv+' '+Tx('Нм','Нм'):'',Ts+' '+Tx('Нм','Нм'),bad.concat(warn).join('; ')||Tx('в допустимых пределах','у допустимих межах'));
+  }else if(Tv&&Tm&&Tm>Tv)add(LN.ts,'warn','≤ '+Tv+' '+Tx('Нм','Нм'),Tx('до ','до ')+Tm+' '+Tx('Нм','Нм'),Tx('макс. момент привода выше допустимого для арматуры: задайте момент отключения ≤ ','макс. момент приводу вищий за допустимий для арматури: задайте момент вимкнення ≤ ')+Tv);
+  {const rpm=num(a.rpm),tr=num(v.time),tt=v.sh==='stem'?(rpm&&num(v.turns)?num(v.turns)*60/rpm:null):num(a.t90);
+    if(tt!=null)add(LN.tm,tr?(tt<=tr?'ok':'bad'):'info',tr?'≤ '+tr+' '+Tx('с','с'):'',fmt(tt,1)+' '+Tx('с','с'),v.sh==='stem'?Tx('по числу оборотов и скорости','за кількістю обертів і швидкістю'):Tx('на 90°','на 90°'))}
+  return out;
+}
+const DW_ST=()=>({ok:'OK',warn:S.clientLang==='uk'?'Увага':'Внимание',bad:S.clientLang==='uk'?'Не підходить':'Не подходит',na:'—',info:S.clientLang==='uk'?'Інфо':'Инфо'});
+function dwgVerdict(c){return c.some(x=>x.st==='bad')?'bad':c.some(x=>x.st==='warn')?'warn':c.some(x=>x.st==='ok')?'ok':'na'}
+function dwgPositions(){return S.req?S.req.items.map(it=>({it,c:dwgCheck(it.no)})).filter(x=>x.c&&x.c.length):[]}
+const dwgSheetName=()=>S.clientLang==='uk'?'Перевірка підбору':'Проверка подбора';
+function dwgAoA(){
+  const uk=S.clientLang==='uk',ST=DW_ST(),P=dwgPositions();
+  const A=[[dwgSheetName()],[S.name],[],[uk?'Поз.':'Поз.',uk?'Параметр':'Параметр',uk?'Арматура':'Арматура',uk?'Привід':'Привод',uk?'Результат':'Результат',uk?'Коментар':'Комментарий']];
+  P.forEach(({it,c})=>{const d=dwgRow(it.no);A.push([it.no,(it.name||'')+(d.a.type?'  ·  '+(uk?'привід ':'привод ')+d.a.type:''),'','','','']);c.forEach(x=>A.push(['',x.n,x.vv,x.av,ST[x.st],x.note]));A.push([])});
+  A.push([uk?'Фланці: ISO 5211 (неповнообертові), ISO 5210 (багатообертові). Запас за моментом задається на позицію. Розрахункова перевірка; остаточне підтвердження комплектності та посадки — у виробника.':'Фланцы: ISO 5211 (неполноповоротные), ISO 5210 (многооборотные). Запас по моменту задаётся на позицию. Расчётная проверка; окончательное подтверждение комплектности и посадки — у производителя.']);
+  return A;
+}
+function dwgSheetX(wb){const ws=XLSX.utils.aoa_to_sheet(dwgAoA());ws['!cols']=[{wch:6},{wch:44},{wch:30},{wch:26},{wch:14},{wch:70}];XLSX.utils.book_append_sheet(wb,ws,dwgSheetName())}
+function dwgSheetEJ(wb){
+  const A=dwgAoA(),ws=wb.addWorksheet(dwgSheetName(),{views:[{showGridLines:false}],pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  ws.columns=[{width:6},{width:44},{width:30},{width:26},{width:14},{width:70}];
+  const ft=(o={})=>Object.assign({name:XF,size:10},o),ST=DW_ST(),stIv={};Object.keys(ST).forEach(k=>stIv[ST[k]]=k);
+  const col={ok:'FFC6EFCE',warn:'FFFFEB9C',bad:'FFFFC7CE',info:'FFDDEBF7'};
+  ws.mergeCells('A1:F1');const t=ws.getCell('A1');t.value=A[0][0];t.font=ft({size:15,bold:true,color:{argb:'FFFFFFFF'}});t.fill=fillA(NAVY);t.alignment={vertical:'middle',indent:1};ws.getRow(1).height=26;
+  ws.getCell('A2').value=A[1][0];ws.getCell('A2').font=ft({bold:true});
+  A[3].forEach((v,i)=>{const c=ws.getCell(4,i+1);c.value=v;c.font=ft({bold:true,color:{argb:'FFFFFFFF'}});c.fill=fillA(NAVY);c.border=bdr(NAVY);c.alignment={horizontal:'center',vertical:'middle'}});
+  let r=5;
+  for(let i=4;i<A.length-1;i++){const row=A[i];if(!row.length){r++;continue}
+    row.forEach((v,j)=>{const c=ws.getCell(r,j+1);c.value=v===''?null:v;c.font=ft({bold:row[0]!==''});c.alignment={vertical:'top',wrapText:true,horizontal:j===0?'center':'left'};if(row[0]!==''){c.fill=fillA(TOTAL)}else c.border=bdr();
+      if(j===4&&row[0]===''&&stIv[v]&&col[stIv[v]]){c.fill=fillA(col[stIv[v]]);c.font=ft({bold:true});c.alignment={horizontal:'center',vertical:'top'}}});
+    if(row[0]!=='')ws.mergeCells(`B${r}:F${r}`);
+    ws.getRow(r).height=Math.max(16,13*Math.ceil(String(row[5]||'').length/78)+4);r++}
+  ws.mergeCells(`A${r+1}:F${r+1}`);const n=ws.getCell('A'+(r+1));n.value=A[A.length-1][0];n.font=ft({size:9,italic:true,color:{argb:'FF5B6B75'}});n.alignment={wrapText:true,vertical:'top'};ws.getRow(r+1).height=28;
+}
+async function dwgXlsxPretty(){const EJ=await loadExcelJS(),wb=new EJ.Workbook();wb.creator='MVA Industries';dwgSheetEJ(wb);return new Blob([await wb.xlsx.writeBuffer()],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}
+function dwgXlsx(){const wb=XLSX.utils.book_new();dwgSheetX(wb);return xblob(wb)}
+function docDwg(){
+  const ST=DW_ST(),uk=S.clientLang==='uk',P=dwgPositions(),rows=[];
+  P.forEach(({it,c})=>{const d=dwgRow(it.no);rows.push({bold:true,cells:[it.no,(it.name||'')+(d.a.type?' · '+(uk?'привід ':'привод ')+d.a.type:''),'','','','']});c.forEach(x=>rows.push({cells:['',x.n,x.vv,x.av,ST[x.st],x.note]}))});
+  return{fit:true,landscape:true,title:dwgSheetName()+' — '+S.name,meta:[[uk?'Дата':'Дата',dRuF(today())]],blocks:[{t:'table',head:['Поз.',uk?'Параметр':'Параметр',uk?'Арматура':'Арматура',uk?'Привід':'Привод',uk?'Результат':'Результат',uk?'Коментар':'Комментарий'],w:[5,25,17,15,10,28],al:['c','l','l','l','c','l'],rows,grey:true},{t:'p',text:uk?'Внутрішній документ. Розрахункова перевірка; остаточне підтвердження — у виробника.':'Внутренний документ. Расчётная проверка; окончательное подтверждение — у производителя.',note:true}]};
+}
+/* загрузка рисунков: фото сжимаются, PDF превращаются в страницы-картинки */
+const loadImg=src=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('не открылось изображение'));i.src=src});
+async function shrink(blob,max=1800){
+  const u=URL.createObjectURL(blob);
+  try{const im=await loadImg(u),k=Math.min(1,max/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*k));cv.height=Math.max(1,Math.round(im.height*k));
+    const cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.drawImage(im,0,0,cv.width,cv.height);return cv.toDataURL('image/jpeg',0.82)}
+  finally{URL.revokeObjectURL(u)}
+}
+async function dwgAddFiles(no,files){
+  const d=dwgRow(no);let n=0;
+  for(const f of files){
+    const nm=f.name||'рисунок';
+    try{
+      if(/\.pdf$/i.test(nm)||f.type==='application/pdf'){
+        await setupPdf();const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise,mp=Math.min(pdf.numPages,6);
+        for(let p=1;p<=mp;p++){const page=await pdf.getPage(p),v0=page.getViewport({scale:1}),sc=Math.min(3,2000/Math.max(v0.width,v0.height)),vp=page.getViewport({scale:sc}),cv=document.createElement('canvas');cv.width=Math.ceil(vp.width);cv.height=Math.ceil(vp.height);
+          const cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);await page.render({canvasContext:cx,viewport:vp}).promise;
+          d.files.push({id:uid(),name:nm+(pdf.numPages>1?' (стр. '+p+')':''),data:cv.toDataURL('image/jpeg',0.82)});n++}
+        if(pdf.numPages>mp)toast('Из PDF взяты первые '+mp+' страниц из '+pdf.numPages);
+      }else if(/\.hei[cf]$/i.test(nm)){toast('Формат HEIC не поддерживается. Сохраните фото как JPG или PNG.')}
+      else{d.files.push({id:uid(),name:nm,data:await shrink(f)});n++}
+    }catch(e){console.error(e);toast('Не удалось добавить «'+nm+'»: '+(e&&e.message||'ошибка'))}
+  }
+  if(n){changed();renderAll()}
+}
+function dwgView(src){
+  let dlg=document.getElementById('imgdlg');
+  if(!dlg){dlg=document.createElement('dialog');dlg.id='imgdlg';dlg.style.cssText='padding:6px;max-width:96vw;max-height:96vh;border:1px solid var(--line);background:var(--surface)';dlg.innerHTML='<img style="max-width:92vw;max-height:88vh;display:block;margin:auto"><div style="text-align:center;margin-top:6px"><button class="btn" type="button">Закрыть</button></div>';dlg.querySelector('button').onclick=()=>dlg.close();dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});document.body.appendChild(dlg)}
+  dlg.querySelector('img').src=src;if(dlg.showModal)dlg.showModal();else dlg.setAttribute('open','');
+}
+const DWG_PROMPT=(it,d)=>`К позиции приложены чертёж(и) или фото арматуры, привода или их присоединения. Позиция: «${(it.name||'')} ${(it.params||'')}».${d.a.type?' Привод: '+d.a.type+'.':''}
+Считай с изображений только то, что написано или чётко размерно указано. Ничего не придумывай и не выводи из общих знаний: если значения нет на изображении, ставь null. Ответь одним JSON без пояснений:
+{"valve":{"fl":"фланец арматуры по ISO 5211/5210, например F10 или F10/F12","sh":"sq (квадрат) | key (вал со шпонкой) | stem (шток многооборотной арматуры)","shA":число мм (сторона квадрата или диаметр),"key":"шпонка bxh или null","T":число Нм (рабочий момент),"Tmax":число Нм (допустимый момент),"turns":число,"time":число с},
+ "actuator":{"type":"тип привода","fl":"фланец привода","bore":число мм (макс. диаметр отверстия),"stem":число мм (макс. диаметр штока),"Tmin":число Нм,"Tmax":число Нм,"Tset":число Нм,"rpm":число (об/мин, многооборотный),"t90":число (с на 90°, неполноповоротный)}}`;
+async function dwgAi(no,signal,prog){
+  const it=S.req.items.find(x=>x.no===no),d=dwgRow(no);
+  if(!d.files.some(f=>f.data))throw{message:'Сначала добавьте чертёж или фото'};
+  const imgs=[];for(const f of d.files){if(!f.data)continue;imgs.push(await (await fetch(f.data)).blob())}
+  const r=await callAI(DWG_PROMPT(it,d),{images:imgs.slice(0,8),signal,onProg:prog});
+  let j;try{j=parseJsonLoose(r.text)}catch(e){throw{code:r.cut?'truncated':'invalid_json'}}
+  let n=0;
+  [['v',j&&j.valve],['a',j&&j.actuator]].forEach(([side,o])=>{if(!o)return;Object.keys(o).forEach(key=>{let val=o[key];if(val==null||val==='')return;const num0=['shA','T','Tmax','turns','time','bore','stem','Tmin','Tset','rpm','t90'].includes(key);if(num0){val=num(val);if(val==null)return}else{val=String(val).trim();if(side==='v'&&key==='sh'&&!['sq','key','stem'].includes(val))return}
+    if(d[side][key]!==''&&d[side][key]!=null)return;d[side][key]=val;d.ai.push(side+'.'+key);n++})});
+  toast(n?'ИИ заполнил полей: '+n+'. Проверьте значения по чертежу':'ИИ не нашёл нужных данных на изображениях');
+}
+const dwgOpen=new Set();
+function vDwg(m){
+  if(!S.req){m.innerHTML='<section class="card"><h2>Чертежи и подбор</h2><p class="sub">Сначала загрузите запрос на вкладке «Запрос».</p></section>';return}
+  const ST=DW_ST(),CLS={ok:'ok',warn:'warn',bad:'crit',na:'',info:'info'};
+  const fld=(side,f,d)=>{const [key,lab,typ,ph]=f,val=d[side][key],ai=d.ai.includes(side+'.'+key);
+    const lbl=`<span>${esc(lab)}${ai?' <b style="color:var(--info)">· ИИ, проверьте</b>':''}</span>`;
+    if(typ==='sel')return`<label class="dwf">${lbl}<select data-df="${side}.${key}"><option value="sq"${val==='sq'||!val?' selected':''}>квадрат (ISO 5211)</option><option value="key"${val==='key'?' selected':''}>вал / отверстие со шпонкой</option><option value="stem"${val==='stem'?' selected':''}>шток (многооборотный, ISO 5210)</option></select></label>`;
+    return`<label class="dwf">${lbl}<input data-df="${side}.${key}" ${typ==='number'?'type="number" step="any" inputmode="decimal"':'type="text"'} value="${val==null?'':esc(val)}"${ph?` placeholder="${esc(ph)}"`:''}></label>`};
+  m.innerHTML=`<section class="card"><h2>Чертежи и подбор</h2>
+  <p class="sub">К каждой позиции можно приложить чертежи и фото (PDF, JPG, PNG; с телефона можно снять камерой), внести данные арматуры и привода и проверить совместимость: фланец ISO 5211/5210, вал или шток, момент с запасом, время хода. Результат идёт отдельным листом «${esc(dwgSheetName())}» в калькулятор и отдельным файлом. Клиенту он не попадает. Если в настройках задан ключ ИИ, кнопка «Считать с чертежа» заполнит пустые поля сама; значения нужно проверить по чертежу.</p>
+  <div class="row2"><button class="btn pri" id="dwX" type="button">Проверка подбора .xlsx</button><button class="btn" id="dwP" type="button">PDF</button><button class="btn" id="dwW" type="button">Word</button><span class="hint">${dwgPositions().length?'Позиций с проверкой: '+dwgPositions().length:'Заполните данные хотя бы у одной позиции'}</span></div></section>
+  ${S.req.items.map(it=>{const d=dwgRow(it.no),c=dwgCheck(it.no),vd=c&&c.length?dwgVerdict(c):'na';
+    return`<details class="offer" data-dno="${esc(it.no)}"${dwgOpen.has(it.no)||dwgHas(d)||d.files.length?' open':''}><summary>Поз. ${esc(it.no)} — ${esc((it.name||'').slice(0,90))}${d.files.length?` <span class="hint">· файлов: ${d.files.length}</span>`:''}${vd!=='na'?` <span class="pill ${CLS[vd]}">${esc(vd==='ok'?'подходит':vd==='warn'?'есть замечания':'не подходит')}</span>`:''}</summary>
+    <div class="row2" style="margin:8px 0">${d.files.map(f=>f.data?`<span class="dwth"><img src="${f.data}" alt="${esc(f.name)}" title="${esc(f.name)}" data-dview="${f.id}"><button type="button" class="btn" data-ddel="${f.id}" aria-label="Удалить">×</button></span>`:`<span class="hint">${esc(f.name)} (изображение не передано при копировании текста; загрузите заново)</span>`).join('')}
+      <label class="btn" style="cursor:pointer">+ Чертёж / фото<input type="file" hidden multiple accept="image/*,.pdf" data-dfile="${esc(it.no)}"></label>
+      <button class="btn" type="button" data-dai="${esc(it.no)}"${d.files.some(f=>f.data)?'':' disabled'}>Считать с чертежа (ИИ)</button></div>
+    <div class="dwg2"><div><h3 style="font-size:14px;margin:6px 0">Арматура</h3><div class="dwg-grid">${DW_V.map(f=>fld('v',f,d)).join('')}</div></div>
+    <div><h3 style="font-size:14px;margin:6px 0">Привод</h3><div class="dwg-grid">${DW_A.map(f=>fld('a',f,d)).join('')}<label class="dwf"><span>Запас по моменту, ×</span><input data-dk type="number" step="0.05" inputmode="decimal" value="${d.k}"></label></div></div></div>
+    ${c&&c.length?`<table class="xt" style="margin-top:8px"><thead><tr><th>Параметр</th><th>Арматура</th><th>Привод</th><th>Результат</th><th>Комментарий</th></tr></thead><tbody>${c.map(x=>`<tr><td>${esc(x.n)}</td><td>${esc(x.vv)}</td><td>${esc(x.av)}</td><td><span class="pill ${CLS[x.st]}">${esc(ST[x.st])}</span></td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table>`:''}
+    </details>`}).join('')}`;
+  const D=no=>dwgRow(no);
+  m.querySelectorAll('details[data-dno]').forEach(el=>el.addEventListener('toggle',()=>{el.open?dwgOpen.add(el.dataset.dno):dwgOpen.delete(el.dataset.dno)}));
+  m.querySelectorAll('[data-df]').forEach(inp=>inp.onchange=e=>{const no=e.target.closest('details').dataset.dno,[side,key]=e.target.dataset.df.split('.'),d=D(no);let v=e.target.value;if(e.target.type==='number')v=num(v);d[side][key]=v==null?'':v;d.ai=d.ai.filter(x=>x!==e.target.dataset.df);dwgOpen.add(no);changed();renderAll()});
+  m.querySelectorAll('[data-dk]').forEach(inp=>inp.onchange=e=>{const no=e.target.closest('details').dataset.dno;D(no).k=num(e.target.value)||1.3;dwgOpen.add(no);changed();renderAll()});
+  m.querySelectorAll('[data-dfile]').forEach(inp=>inp.onchange=async e=>{const f=[...e.target.files];e.target.value='';if(f.length){dwgOpen.add(inp.dataset.dfile);await dwgAddFiles(inp.dataset.dfile,f)}});
+  m.querySelectorAll('[data-dview]').forEach(im=>im.onclick=()=>dwgView(im.src));
+  m.querySelectorAll('[data-ddel]').forEach(b=>b.onclick=()=>{const no=b.closest('details').dataset.dno,d=D(no);d.files=d.files.filter(f=>f.id!==b.dataset.ddel);dwgOpen.add(no);changed();renderAll()});
+  m.querySelectorAll('[data-dai]').forEach(b=>b.onclick=()=>{const no=b.dataset.dai;dwgOpen.add(no);run('ИИ читает чертёж',(s,p)=>dwgAi(no,s,p))});
+  $('#dwX').onclick=async()=>{if(!dwgPositions().length){toast('Заполните данные хотя бы у одной позиции');return}saveFile(`${safeName(S.name)}_${S.clientLang==='uk'?'perevirka_pidboru':'proverka_podbora'}.xlsx`,await xlsxSafe(dwgXlsxPretty,dwgXlsx),'calc')};
+  $('#dwP').onclick=()=>{if(!dwgPositions().length){toast('Заполните данные хотя бы у одной позиции');return}exportDoc('pdf',docDwg(),`${safeName(S.name)}_podbor`,'calc')};
+  $('#dwW').onclick=()=>{if(!dwgPositions().length){toast('Заполните данные хотя бы у одной позиции');return}exportDoc('docx',docDwg(),`${safeName(S.name)}_podbor`,'calc')};
 }
 
 /* ---------- wiring ---------- */
