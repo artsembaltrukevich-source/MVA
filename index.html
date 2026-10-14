@@ -1454,7 +1454,8 @@ function calcCodeAoA(){
 const calcE8=()=>calcCur()==='EUR'&&calcSups().length>0&&calcSups().every(o=>(o.currency||'').toUpperCase()==='EUR');
 const posOpts=it=>optCalc().filter(o=>!o.alt&&o.itemNo===it.no);
 const orphOpts=()=>optCalc().filter(o=>!o.alt&&!S.req.items.some(i=>i.no===o.itemNo));
-function posOf(o){const its=S.req.items,mx=Math.max(its.length,...its.map(i=>parseInt(i.no)||0));let k=0;its.forEach(it=>posOpts(it).forEach(x=>{k++;if(x.id===o.id)o=Object.assign({},o,{no:String(mx+k)})}));return Object.assign({},o,{dd:o.desc,pos:true})}
+const posOptsX=x=>isSplit(x)?posOpts(x.it):altOf(x.it).concat(posOpts(x.it));
+function posOf(o){const its=S.req.items,mx=Math.max(its.length,...its.map(i=>parseInt(i.no)||0));let k=0;its.forEach(it=>posOptsX(rowInfo(it)).forEach(x=>{k++;if(x.id===o.id)o=Object.assign({},o,{no:String(mx+k)})}));return Object.assign({},o,{dd:o.alt&&o.text?o.text:o.desc,pos:true})}
 const sumF=(col,first,last,skip)=>{const a=[];let st=first;for(let i=first;i<=last+1;i++){if(i>last||skip.includes(i)){if(i>st)a.push(i-1>st?col+st+':'+col+(i-1):col+st);st=i+1}}return 'SUM('+a.join(',')+')'};
 const optNote=skip=>{const uk=S.clientLang==='uk';return (uk?'Поз. ':'Поз. ')+skip.join(', ')+(uk?' — опція постачальника, до підсумку не входить':' — опция поставщика, в итог не входит')};
 const e8hd=()=>{const h=CLX().hd,uk=S.clientLang==='uk';return h.slice(0,5).concat([uk?'Ціна EUR (нетто від постачальника)':'Цена EUR (нетто от поставщика)'],h.slice(7))};
@@ -1492,7 +1493,7 @@ function calcXlsx(){
       ws['G'+r]=c2==='PLN'?{t:'n',f:`F${r}/$J$3${KX}`}:c2==='EUR'?{t:'n',f:`F${r}${KX}`}:(KX?{t:'n',f:`${Math.round(p.eur*100)/100}${KX}`}:{t:'n',v:Math.round(p.eur*100)/100});r++});
   };
   const skipR=[];
-  rows.forEach(x=>{rowBody(x);altOf(x.it).forEach(o=>wrP(inlineOpt(o)));posOpts(x.it).forEach(o=>wrP(posOf(o)))});
+  rows.forEach(x=>{rowBody(x);if(isSplit(x))altOf(x.it).forEach(o=>wrP(inlineOpt(o)));posOptsX(x).forEach(o=>wrP(posOf(o)))});
   function wrP(x){if(x.pos)skipR.push(r);ws['A'+r]={t:'s',v:x.no==null?'Опц.':x.no};ws['B'+r]={t:'s',v:x.dd!=null?x.dd:optTag(x)+x.desc};ws['C'+r]={t:'n',v:x.qty};ws['F'+r]={t:'n',v:x.p0};
     ws['G'+r]=x.cur==='PLN'?{t:'n',f:`F${r}/$J$3${KX}`}:x.cur==='EUR'?{t:'n',f:`F${r}${KX}`}:(KX?{t:'n',f:`${r2(x.eurU*100)/100}${KX}`}:{t:'n',v:r2(x.eurU*100)/100});
     ws['I'+r]={t:'n',v:x.mk};ws['D'+r]={t:'n',f:`ROUND(G${r}*I${r},2)`};if(!x.inl){ws['E'+r]={t:'n',f:`D${r}*C${r}`};ws['H'+r]={t:'n',f:`G${r}*C${r}`}}r++}
@@ -1852,7 +1853,7 @@ async function calcXlsxPretty(){
       set('F',p.cur,'#,##0.00',GR);
       if(c2==='PLN')set('G',{formula:`F${r}/$J$3${KX}`,result:cc(p.eur)},'#,##0.00',GR);else if(c2==='EUR')set('G',{formula:`F${r}${KX}`,result:cc(p.eur)},'#,##0.00',GR);else set('G',KX?{formula:`${Math.round(p.eur*100)/100}${KX}`,result:cc(p.eur)}:Math.round(p.eur*100)/100,'#,##0.00',GR);
       r++});};
-  rows.forEach(x=>{rowBody(x);altOf(x.it).forEach(o=>wrPP(inlineOpt(o)));posOpts(x.it).forEach(o=>wrPP(posOf(o)))});
+  rows.forEach(x=>{rowBody(x);if(isSplit(x))altOf(x.it).forEach(o=>wrPP(inlineOpt(o)));posOptsX(x).forEach(o=>wrPP(posOf(o)))});
   function wrPP(x,sep){if(x.pos)skipR.push(r);
     const set=(col,v,fm,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fm)c.numFmt=fm;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
     set('A',x.no==null?'Опц.':x.no,null,null,'center');set('B',x.dd!=null?xv(x.dd):optTag(x)+xv(x.desc),null,null,'left');set('C',x.qty,'0.##',null,'center');set('F',x.p0,'#,##0.00','FFFCE4E4');
