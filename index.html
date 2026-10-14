@@ -1431,9 +1431,24 @@ function calcCodeAoA(){
   codeBlocks().forEach(b=>{const rows=[];b.lines.forEach(l=>{const eq=l.equip.map(e=>[e.code||'',codeTxt(e)||e.txt||'']).filter(x=>x[0]||x[1]);if(!eq.length)return;if(l.code)rows.push([uk?'Повний код':'Полный код',l.code]);rows.push(...eq)});
     if(rows.length)out.push({title:(uk?'Повний опис привода (за кодами) — поз. ':'Полное описание привода (по кодам) — поз. ')+b.no,head:[uk?'Код':'Код',uk?'Розшифрування':'Расшифровка'],rows})});
   return out}
+const calcE8=()=>calcCur()==='EUR'&&calcSups().length>0&&calcSups().every(o=>(o.currency||'').toUpperCase()==='EUR');
+const posOpts=it=>optCalc().filter(o=>!o.alt&&o.itemNo===it.no);
+const orphOpts=()=>optCalc().filter(o=>!o.alt&&!S.req.items.some(i=>i.no===o.itemNo));
+function posOf(o){const its=S.req.items,mx=Math.max(its.length,...its.map(i=>parseInt(i.no)||0));let k=0;its.forEach(it=>posOpts(it).forEach(x=>{k++;if(x.id===o.id)o=Object.assign({},o,{no:String(mx+k)})}));return Object.assign({},o,{dd:o.desc,pos:true})}
+const sumF=(col,first,last,skip)=>{const a=[];let st=first;for(let i=first;i<=last+1;i++){if(i>last||skip.includes(i)){if(i>st)a.push(i-1>st?col+st+':'+col+(i-1):col+st);st=i+1}}return 'SUM('+a.join(',')+')'};
+const optNote=skip=>{const uk=S.clientLang==='uk';return (uk?'Поз. ':'Поз. ')+skip.join(', ')+(uk?' — опція постачальника, до підсумку не входить':' — опция поставщика, в итог не входит')};
+const e8hd=()=>{const h=CLX().hd,uk=S.clientLang==='uk';return h.slice(0,5).concat([uk?'Ціна EUR (нетто від постачальника)':'Цена EUR (нетто от поставщика)'],h.slice(7))};
+const shRef=f=>f.replace(/(\$?)([G-J])(\$?)(\d+)/g,(m,a,c,b,n)=>a+String.fromCharCode(c.charCodeAt(0)-1)+b+n);
+function e8Plain(ws,end){for(let i=4;i<=end;i++){const f=ws['F'+i],g=ws['G'+i],h=ws['H'+i],ii=ws['I'+i];
+  const sh=c=>c&&c.f?Object.assign({},c,{f:shRef(c.f)}):c;
+  const simple=g&&g.f&&g.f==='F'+i,nf=(g&&!simple)?g:f;
+  ['D','E'].forEach(c=>{if(ws[c+i])ws[c+i]=sh(ws[c+i])});
+  [['F',nf],['G',h],['H',ii]].forEach(([c,v])=>{if(v)ws[c+i]=sh(v);else delete ws[c+i]});
+  delete ws['I'+i];delete ws['J'+i]}}
 function calcXlsx(){
   const rows=S.req.items.map(rowInfo),CD=calcDescMap();
-  const A=[['Kalkulator ofertowy MVA'],[calcTitle(),'','','','','',calcCur()!=='EUR'?'Курс '+calcCur()+'/EUR':'',calcCur()!=='EUR'?calcFx():'','','Курс PLN/EUR'],[...CLX().hd,S.rate]];
+  const E8=calcE8(),HDL=E8?e8hd():CLX().hd;
+  const A=[['Kalkulator ofertowy MVA'],[calcTitle(),'','','','','',calcCur()!=='EUR'?'Курс '+calcCur()+'/EUR':'',calcCur()!=='EUR'?calcFx():''],[...HDL,S.rate,'<EUR>']];
   const KX=calcCur()!=='EUR'?'*$H$2':'',KV=calcFx();
   const ws=XLSX.utils.aoa_to_sheet(A);
   let r=4;const first=r;
@@ -1455,16 +1470,18 @@ function calcXlsx(){
       ws['B'+r]={t:'s',v:'     ↳ '+partLabelX(p)};ws['F'+r]={t:'n',v:p.cur};ws['I'+r]={t:'n',v:mkFor(it,p.o)};
       ws['G'+r]=c2==='PLN'?{t:'n',f:`F${r}/$J$3${KX}`}:c2==='EUR'?{t:'n',f:`F${r}${KX}`}:(KX?{t:'n',f:`${Math.round(p.eur*100)/100}${KX}`}:{t:'n',v:Math.round(p.eur*100)/100});r++});
   };
-  rows.forEach(x=>{rowBody(x);altOf(x.it).forEach(o=>wrP(inlineOpt(o)))});
-  function wrP(x){ws['A'+r]={t:'s',v:x.no==null?'Опц.':x.no};ws['B'+r]={t:'s',v:x.dd!=null?x.dd:optTag(x)+x.desc};ws['C'+r]={t:'n',v:x.qty};ws['F'+r]={t:'n',v:x.p0};
+  const skipR=[];
+  rows.forEach(x=>{rowBody(x);altOf(x.it).forEach(o=>wrP(inlineOpt(o)));posOpts(x.it).forEach(o=>wrP(posOf(o)))});
+  function wrP(x){if(x.pos)skipR.push(r);ws['A'+r]={t:'s',v:x.no==null?'Опц.':x.no};ws['B'+r]={t:'s',v:x.dd!=null?x.dd:optTag(x)+x.desc};ws['C'+r]={t:'n',v:x.qty};ws['F'+r]={t:'n',v:x.p0};
     ws['G'+r]=x.cur==='PLN'?{t:'n',f:`F${r}/$J$3${KX}`}:x.cur==='EUR'?{t:'n',f:`F${r}${KX}`}:(KX?{t:'n',f:`${r2(x.eurU*100)/100}${KX}`}:{t:'n',v:r2(x.eurU*100)/100});
     ws['I'+r]={t:'n',v:x.mk};ws['D'+r]={t:'n',f:`ROUND(G${r}*I${r},2)`};if(!x.inl){ws['E'+r]={t:'n',f:`D${r}*C${r}`};ws['H'+r]={t:'n',f:`G${r}*C${r}`}}r++}
   optInc().forEach(wrP);
   const last=r-1;
-  ws['B'+r]={t:'s',v:CLX().tot};ws['E'+r]={t:'n',f:`SUM(E${first}:E${last})`};ws['H'+r]={t:'n',f:`SUM(H${first}:H${last})`};
-  {const sp=optCalc().filter(x=>!x.alt);if(sp.length){r+=2;ws['B'+r]={t:'s',v:optHdr()};r++;optGroups(sp).forEach(g=>{ws['B'+r]={t:'s',v:'— '+g.title+' —'};r++;g.items.forEach(wrP)})}}
+  ws['B'+r]={t:'s',v:CLX().tot};ws['E'+r]={t:'n',f:sumF('E',first,last,skipR)};ws['H'+r]={t:'n',f:sumF('H',first,last,skipR)};
+  if(skipR.length){ws['B'+(r+1)]={t:'s',v:optNote(skipR.map(k=>ws['A'+k].v))};r++}
+  {const sp=orphOpts();if(sp.length){r+=2;ws['B'+r]={t:'s',v:optHdr()};r++;optGroups(sp).forEach(g=>{ws['B'+r]={t:'s',v:'— '+g.title+' —'};r++;g.items.forEach(wrP)})}}
   {const cb=calcCodeAoA();if(cb.length){r+=2;cb.forEach(b=>{ws['B'+r]={t:'s',v:b.title};r++;ws['B'+r]={t:'s',v:b.head[0]};ws['C'+r]={t:'s',v:b.head[1]};r++;b.rows.forEach(x=>{ws['B'+r]={t:'s',v:x[0]};ws['C'+r]={t:'s',v:x[1]};r++});r++})}}
-  ws['!ref']=`A1:J${r}`;ws['!cols']=[{wch:5},{wch:70},{wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:16},{wch:9},{wch:14}];
+  if(E8)e8Plain(ws,r);ws['!ref']=`A1:${E8?'J':'K'}${r}`;ws['!cols']=E8?[{wch:5},{wch:70},{wch:8},{wch:12},{wch:12},{wch:14},{wch:12},{wch:9},{wch:9},{wch:9}]:[{wch:5},{wch:70},{wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:16},{wch:9},{wch:9},{wch:9}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Kalkulator ofertowy MVA');if(dwgPositions().length)dwgSheetX(wb);return xblob(wb);
 }
 
@@ -1787,12 +1804,11 @@ async function calcXlsxPretty(){
   const KX=calcCur()!=='EUR'?'*$H$2':'';
   ws.mergeCells(KX?'A2:F2':'A2:H2');const a2=ws.getCell('A2');a2.value=calcTitle();a2.font=ft({bold:true});
   if(KX){const g2=ws.getCell('G2');g2.value='Курс '+calcCur()+' за 1 EUR';g2.font=ft({bold:true,size:9});g2.alignment={horizontal:'right'};const h2=ws.getCell('H2');h2.value=calcFx();h2.numFmt='0.0000';h2.font=ft({bold:true,color:{argb:'FF0000FF'}});h2.fill=fillA('FFFFFF99');h2.border=bdr()}
-  ws.getCell('I2').value='Курс PLN/EUR';ws.getCell('I2').font=ft({bold:true,size:9});ws.getCell('I2').alignment={horizontal:'right'};
-  const rt=ws.getCell('J2');rt.value=S.rate;rt.numFmt='0.0000';rt.font=ft({bold:true,color:{argb:'FF0000FF'}});rt.fill=fillA('FFFFFF99');rt.border=bdr();
   const hd=CLX().hd;
   hd.forEach((v,i)=>{const x=ws.getCell(3,i+1);x.value=v;x.font=ft({bold:true,color:{argb:'FFFFFFFF'}});x.fill=fillA(NAVY);x.border=bdr(NAVY);x.alignment={horizontal:'center',vertical:'middle',wrapText:true}});
+  {const rt=ws.getCell(3,10);rt.value=S.rate;rt.numFmt='0.0000';rt.font=ft({bold:true,color:{argb:'FF0000FF'}});rt.fill=fillA('FFFFFF99');rt.border=bdr();rt.alignment={horizontal:'center',vertical:'middle'};const eu=ws.getCell(3,11);eu.value='<EUR>';eu.font=ft({size:9,color:{argb:'FF777777'}});eu.alignment={horizontal:'center',vertical:'middle'}}
   ws.getRow(3).height=32;
-  let r=4;const first=r;
+  let r=4;const first=r;const skipR=[];
   const rowBody=x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
     if(isSplit(x)){splitParts(x).forEach((pt,k)=>{const mk=mkFor(it,pt.o),uE=r2(pt.eur*mk);wrPP({no:k?'':it.no,dd:(k?'     ↳ ':'')+splitLbl(CD,it,k,pt),desc:'',qty:x.q,cur:(pt.o.currency||'').toUpperCase(),p0:pt.cur,eurU:pt.eur,mk,uE,saleTE:uE*x.q,costTE:pt.eur*x.q})});return}
@@ -1800,7 +1816,7 @@ async function calcXlsxPretty(){
     set('A',it.no,null,null,'center');set('B',xv(CD[it.no]||(it.name+(it.params?', '+it.params:''))),null,null,'left');set('C',x.q,'0.##',null,'center');
     if(x.ch){
       if(x.ch.comp){set('F','','#,##0.00','FFFCE4E4');set('G',{formula:`SUM(G${r+1}:G${r+x.ch.parts.length})`,result:cc(x.cost)},'#,##0.00','FFFCE4E4')}
-      else if(cur==='PLN'){set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',{formula:`F${r}/$J$2${KX}`,result:cc(x.cost)},'#,##0.00','FFFCE4E4')}
+      else if(cur==='PLN'){set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',{formula:`F${r}/$J$3${KX}`,result:cc(x.cost)},'#,##0.00','FFFCE4E4')}
       else if(cur==='EUR'){set('F',null,'#,##0.00','FFFCE4E4');set('G',KX?{formula:`${r2(x.ch.cur*100)/100}${KX}`,result:cc(x.ch.cur)}:r2(x.ch.cur*100)/100,'#,##0.00','FFFCE4E4')}
       else{set('F',x.ch.cur,'#,##0.00','FFFCE4E4');set('G',KX?{formula:`${r2(x.cost*100)/100}${KX}`,result:cc(x.cost)}:r2(x.cost*100)/100,'#,##0.00','FFFCE4E4')}
       const mixP=x.ch.comp&&new Set(x.ch.parts.map(p=>mkFor(it,p.o))).size>1;
@@ -1813,28 +1829,41 @@ async function calcXlsxPretty(){
       ['A','C','D','E','H','I'].forEach(c=>set(c,'',null,GR));set('I',mkFor(it,p.o),'0.00',GR);
       set('B','     ↳ '+partLabelX(p),null,GR,'left');ws.getCell('B'+r).font=ft({italic:true,color:{argb:'FF555555'}});
       set('F',p.cur,'#,##0.00',GR);
-      if(c2==='PLN')set('G',{formula:`F${r}/$J$2${KX}`,result:cc(p.eur)},'#,##0.00',GR);else if(c2==='EUR')set('G',{formula:`F${r}${KX}`,result:cc(p.eur)},'#,##0.00',GR);else set('G',KX?{formula:`${Math.round(p.eur*100)/100}${KX}`,result:cc(p.eur)}:Math.round(p.eur*100)/100,'#,##0.00',GR);
+      if(c2==='PLN')set('G',{formula:`F${r}/$J$3${KX}`,result:cc(p.eur)},'#,##0.00',GR);else if(c2==='EUR')set('G',{formula:`F${r}${KX}`,result:cc(p.eur)},'#,##0.00',GR);else set('G',KX?{formula:`${Math.round(p.eur*100)/100}${KX}`,result:cc(p.eur)}:Math.round(p.eur*100)/100,'#,##0.00',GR);
       r++});};
-  rows.forEach(x=>{rowBody(x);altOf(x.it).forEach(o=>wrPP(inlineOpt(o)))});
-  function wrPP(x,sep){
+  rows.forEach(x=>{rowBody(x);altOf(x.it).forEach(o=>wrPP(inlineOpt(o)));posOpts(x.it).forEach(o=>wrPP(posOf(o)))});
+  function wrPP(x,sep){if(x.pos)skipR.push(r);
     const set=(col,v,fm,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fm)c.numFmt=fm;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
     set('A',x.no==null?'Опц.':x.no,null,null,'center');set('B',x.dd!=null?xv(x.dd):optTag(x)+xv(x.desc),null,null,'left');set('C',x.qty,'0.##',null,'center');set('F',x.p0,'#,##0.00','FFFCE4E4');
-    set('G',x.cur==='PLN'?{formula:`F${r}/$J$2${KX}`,result:cc(x.eurU)}:x.cur==='EUR'?{formula:`F${r}${KX}`,result:cc(x.eurU)}:(KX?{formula:`${r2(x.eurU*100)/100}${KX}`,result:cc(x.eurU)}:r2(x.eurU*100)/100),'#,##0.00','FFFCE4E4');
+    set('G',x.cur==='PLN'?{formula:`F${r}/$J$3${KX}`,result:cc(x.eurU)}:x.cur==='EUR'?{formula:`F${r}${KX}`,result:cc(x.eurU)}:(KX?{formula:`${r2(x.eurU*100)/100}${KX}`,result:cc(x.eurU)}:r2(x.eurU*100)/100),'#,##0.00','FFFCE4E4');
     set('I',x.mk,'0.00');ws.getCell('I'+r).font=ft({color:{argb:'FF0000FF'}});ws.getCell('I'+r).fill=fillA('FFFFFF99');
     set('D',{formula:`ROUND(G${r}*I${r},2)`,result:cc(x.uE)},'#,##0.00','FFE2F0D9');if(!x.inl){set('E',{formula:`D${r}*C${r}`,result:cc(x.saleTE)},'#,##0.00','FFE2F0D9');set('H',{formula:`G${r}*C${r}`,result:cc(x.costTE)},'#,##0.00','FFFCE4E4')}else{set('E',null,null,'FFF2F2F2');set('H',null,null,'FFF2F2F2')}
     ws.getRow(r).height=Math.max(22,14*linesEst(x.dd!=null?x.dd:x.desc,70)+6);r++}
   optInc().forEach(x=>wrPP(x));
   const last=r-1;
-  ws.getCell('B'+r).value=CLX().tot;ws.getCell('E'+r).value={formula:`SUM(E${first}:E${last})`,result:cc(totals().sale)};ws.getCell('H'+r).value={formula:`SUM(H${first}:H${last})`,result:cc(totals().cost)};
+  ws.getCell('B'+r).value=CLX().tot;ws.getCell('E'+r).value={formula:sumF('E',first,last,skipR),result:cc(totals().sale)};ws.getCell('H'+r).value={formula:sumF('H',first,last,skipR),result:cc(totals().cost)};const totR=r;
   for(let k=1;k<=10;k++){const c=ws.getCell(r,k);c.font=ft({bold:true,size:11});c.fill=fillA(TOTAL);c.border={top:{style:'medium',color:{argb:NAVY}},bottom:{style:'medium',color:{argb:NAVY}}};if(k===5||k===8)c.numFmt='#,##0.00'}
   ws.getCell('B'+r).alignment={horizontal:'right'};
-  const t=totals();r+=2;
-  [[CLX().mg,{formula:`E${r-2}-H${r-2}`,result:cc(t.margin)},'#,##0.00'],[CLX().mgp,{formula:`IF(E${r-2}=0,0,(E${r-2}-H${r-2})/E${r-2})`,result:t.pct/100},'0.0%']].forEach(([k,v,fm],i)=>{const a=ws.getCell('B'+(r+i));a.value=k;a.font=ft({bold:true});a.alignment={horizontal:'right'};const b=ws.getCell('E'+(r+i));b.value=v;b.numFmt=fm;b.font=ft({bold:true});b.border=bdr()});
-  {const sp=optCalc().filter(x=>!x.alt);if(sp.length){r+=3;ws.mergeCells(`A${r}:J${r}`);const oh=ws.getCell('A'+r);oh.value=optHdr();oh.font=ft({bold:true,color:{argb:NAVY}});r++;optGroups(sp).forEach(g=>{ws.mergeCells(`B${r}:J${r}`);const gh=ws.getCell('B'+r);gh.value=g.title;gh.font=ft({bold:true});gh.fill=fillA(TOTAL);gh.border=bdr();ws.getRow(r).height=18;r++;g.items.forEach(x=>wrPP(x))})}}
+  if(skipR.length){const nc=ws.getCell('B'+(r+1));nc.value=optNote(skipR.map(k=>ws.getCell('A'+k).value));nc.font=ft({italic:true,size:9,color:{argb:'FF555555'}});r++}
+  r+=1;
+  {const sp=orphOpts();if(sp.length){r+=2;ws.mergeCells(`A${r}:J${r}`);const oh=ws.getCell('A'+r);oh.value=optHdr();oh.font=ft({bold:true,color:{argb:NAVY}});r++;optGroups(sp).forEach(g=>{ws.mergeCells(`B${r}:J${r}`);const gh=ws.getCell('B'+r);gh.value=g.title;gh.font=ft({bold:true});gh.fill=fillA(TOTAL);gh.border=bdr();ws.getRow(r).height=18;r++;g.items.forEach(x=>wrPP(x))})}}
   {const cb=calcCodeAoA();if(cb.length){r+=2;cb.forEach(b=>{
     ws.mergeCells(`B${r}:J${r}`);const th=ws.getCell('B'+r);th.value=b.title;th.font=ft({bold:true,color:{argb:'FFFFFFFF'}});th.fill=fillA(NAVY);ws.getRow(r).height=20;r++;
     [b.head].concat(b.rows).forEach((x,i)=>{ws.mergeCells(`C${r}:J${r}`);const a=ws.getCell('B'+r),t=ws.getCell('C'+r);a.value=x[0];t.value=x[1];[a,t].forEach(c=>{c.font=ft({bold:i===0||/^(Повний код|Полный код)$/.test(x[0])});c.border=bdr();c.alignment={vertical:'top',wrapText:true};if(i===0)c.fill=fillA(TOTAL)});
       ws.getRow(r).height=Math.max(16,13*Math.ceil(String(x[1]||'').length/105)+4);r++});r++})}}
+  if(calcE8()){
+    const mg=(ws.model.merges||[]).slice();mg.forEach(m=>ws.unMergeCells(m));
+    const sh=v=>v&&typeof v==='object'&&v.formula?{formula:shRef(v.formula),result:v.result}:v,cl=o=>JSON.parse(JSON.stringify(o||{}));
+    for(let i=4;i<=r;i++){const row=ws.getRow(i),F=row.getCell('F'),G=row.getCell('G'),H=row.getCell('H'),I=row.getCell('I'),J=row.getCell('J');
+      const gv=G.value,simple=gv&&typeof gv==='object'&&gv.formula==='F'+i,nf=(gv!=null&&gv!==''&&!simple)?G:F;
+      const fv=sh(nf.value),fs=cl(nf.style),gv2=sh(H.value),gs=cl(H.style),hv=sh(I.value),hs=cl(I.style);
+      ['D','E'].forEach(c=>{const x=row.getCell(c);x.value=sh(x.value)});
+      F.value=fv;F.style=fs;G.value=gv2;G.style=gs;H.value=hv;H.style=hs;I.value=null;I.style={};J.value=null;J.style={}}
+    {const f3=ws.getCell('F3'),h3=ws.getCell('G3'),i3=ws.getCell('H3'),g3=ws.getCell('G3'),hh=e8hd(),st=cl(ws.getCell('F3').style);
+     hh.forEach((v,k)=>{if(k>=5){const c=ws.getCell(3,k+1);c.value=v;c.style=cl(st)}});ws.getCell('I3').value=null;ws.getCell('I3').style={};
+     const rt=ws.getCell(3,9),eu=ws.getCell(3,10),k11=ws.getCell(3,11);rt.value=S.rate;rt.numFmt='0.0000';rt.font=ft({bold:true,color:{argb:'FF0000FF'}});rt.fill=fillA('FFFFFF99');rt.border=bdr();rt.alignment={horizontal:'center',vertical:'middle'};eu.value='<EUR>';eu.font=ft({size:9,color:{argb:'FF777777'}});eu.alignment={horizontal:'center',vertical:'middle'};k11.value=null;k11.style={}}
+    mg.forEach(m=>ws.mergeCells(m.replace(/J(\d+)/g,'I$1')));
+    [5,70,8,13,14,15,17,14,14,10].forEach((w,k)=>{ws.getColumn(k+1).width=w})}
   if(dwgPositions().length)dwgSheetEJ(wb);
   const buf=await wb.xlsx.writeBuffer();
   return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
