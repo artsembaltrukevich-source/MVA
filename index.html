@@ -960,6 +960,22 @@ async function ocr(blobs,ctx){
   }
   return out;
 }
+/* наш собственный калькулятор, загруженный как оферта: берём только цены поставщика (Netto PLN / «Ціна пост.»), без наших цен и наценки */
+function mvaCalcText(ws){
+  const A=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});let h=-1,cF=-1,cG=-1;
+  for(let i=0;i<Math.min(A.length,15);i++){const r=A[i].map(x=>String(x).trim());const j=r.findIndex(x=>/netto\s*pln/i.test(x)||/^(ціна|цена)\s*пост\.?$/i.test(x));if(j>=0){h=i;cF=j;cG=r.findIndex((x,k)=>k>j&&/eur/i.test(x)&&/(ціна|цена)/i.test(x));break}}
+  if(h<0)return null;
+  const H=A[h].map(x=>String(x).trim()),cA=Math.max(0,H.findIndex(x=>x==='№')),cB=Math.max(1,H.findIndex(x=>/(найменування|наименование|опис|описание)/i.test(x))),cQ=Math.max(2,H.findIndex(x=>/(кіл|кол|к-сть)/i.test(x)));
+  const out=[];
+  for(let i=h+1;i<A.length;i++){
+    const r=A[i],a=String(r[cA]).trim(),nm=String(r[cB]).replace(/\s*\n\s*/g,'; ').trim();
+    if(/^(повний опис|полное описание)/i.test(a))break;
+    if(!/^\d+$/.test(a)||!nm||/^(↳|ОПЦІЯ|ОПЦИЯ)/i.test(nm))continue;
+    const pF=num(r[cF]),pG=cG>=0?num(r[cG]):null;
+    if(pF>0)out.push([a,nm,r[cQ],pF,'PLN'].join(' | '));else if(pG>0)out.push([a,nm,r[cQ],pG,'EUR'].join(' | '));
+  }
+  return out.length?'(это наш калькулятор: ниже ТОЛЬКО цены поставщика за 1 шт. из колонки «Netto PLN після знижки постачальника» / «Ціна пост.»; наша цена с наценкой, строки «↳ Привід» и «ОПЦІЯ» исключены)\n№ | Наименование | Кол-во | Цена поставщика за 1 шт. | Валюта\n'+out.join('\n'):null;
+}
 async function readFile(f,ctx){
   ctx=ctx||{};
   const n=f.name.toLowerCase();
@@ -969,7 +985,7 @@ async function readFile(f,ctx){
   }
   if(/\.(xlsx|xls|xlsm|csv)$/.test(n)){
     const wb=XLSX.read(await f.arrayBuffer());
-    return wb.SheetNames.map(s=>'## '+s+'\n'+XLSX.utils.sheet_to_csv(wb.Sheets[s],{blankrows:false})).join('\n\n');
+    return wb.SheetNames.map(s=>'## '+s+'\n'+(mvaCalcText(wb.Sheets[s])||XLSX.utils.sheet_to_csv(wb.Sheets[s],{blankrows:false}))).join('\n\n');
   }
   if(n.endsWith('.docx')){const r=await mammoth.extractRawText({arrayBuffer:await f.arrayBuffer()});return r.value}
   if(n.endsWith('.pdf')){
@@ -1256,7 +1272,10 @@ function supMeta(r){
     return`<div class="hint">${esc([p.o.number?'оферта №'+p.o.number:'',_arts(p),lt].filter(Boolean).join(' · '))}</div>`+(p.variants?`<label class="hint" title="В оферте несколько вариантов этой позиции: цены вариантов не суммируются, считается один">Вариант: <select data-var="${esc(p.o.id)}" style="font-size:12px;width:auto">${p.variants.map(v=>`<option value="${esc(v.v)}"${v.v===p.variant?' selected':''}>${esc(v.v)}${v.bad?' (нет цены)':' — '+fmt(v.cur)+' '+esc(p.o.currency||'')}</option>`).join('')}</select></label>`:'')}).join('');
 }
 const partKind=p=>(isActCand(p)||(p.lines||[]).some(l=>l.equip&&l.equip.length))?(S.clientLang==='uk'?'Привід':'Привод'):'Арматура';
-const CLX=()=>{const X=CLX0();X.hd=X.hd.map(Ec);X.mg=Ec(X.mg);return X};
+const CLX=()=>{const X=CLX0();X.hd=X.hd.map(Ec);X.mg=Ec(X.mg);
+  const uk=S.clientLang==='uk',cu=calcCur(),pln=S.req&&calcSups().some(o=>(o.currency||'').toUpperCase()==='PLN'),sx=cu!=='EUR'?', '+cu:'';
+  X.hd=['№',uk?'Найменування':'Наименование',uk?'Кіл-сть':'Кол-во',(uk?'Ціна за 1 шт.':'Цена за 1 шт.')+sx,(uk?'РАЗОМ MVA':'ИТОГО MVA')+sx,pln?(uk?'Netto PLN після знижки постачальника':'Netto PLN после скидки поставщика'):(uk?'Ціна постачальника (в валюті оферти)':'Цена поставщика (в валюте оферты)'),(uk?'Ціна ':'Цена ')+cu,(uk?'Сума ':'Сумма ')+cu,'%'];
+  return X};
 const CLX0=()=>S.clientLang==='uk'?{hd:['№','Опис','К-сть','Ціна од. EUR','Сума EUR','Ціна пост.','Ціна пост. EUR','Собівартість EUR','Націнка'],tot:'РАЗОМ',nop:'немає ціни',mg:'Маржа, EUR',mgp:'Маржа від ціни клієнту',sup:'Постачальник',of:'пропозиція №'}:{hd:['№','Описание','Кол-во','Цена ед. EUR','Сумма EUR','Цена пост.','Цена пост. EUR','Себестоимость EUR','Наценка'],tot:'ИТОГО',nop:'нет цены',mg:'Маржа, EUR',mgp:'Маржа от цены клиенту',sup:'Поставщик',of:'оферта №'};
 const partLabel=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+': '+(supOn()?offName(p.o)+(a?' — ':''):'')+a+' ('+(p.o.currency||'')+')'+(p.variant?' · вар. '+p.variant:'')};
 const partLabelX=p=>{const a=[...new Set(p.lines.map(l=>l.article).filter(Boolean))].join(', ');return partKind(p)+(a?': '+a:'')+' ('+(p.o.currency||'')+')'+offTag(p.o)+(p.variant?' · вар. '+p.variant:'')};
@@ -1355,8 +1374,32 @@ function kitBar(){
     <p class="hint">Выберите, от кого арматура и от кого привод. Это действует на весь проект сразу, цена «самого дешёвого» не подставляется. Для отдельной позиции выбор можно изменить в столбце «Поставщик». Чтобы получить два расчёта (например BROEN + AUMA и EFAR + AUMA), переключите выбор и скачайте файл для каждого варианта.</p>
     <div class="row2"><label>Арматура от<select id="kitA"><option value="">— по каждой позиции отдельно (самая дешёвая)</option>${o2(K.a)}</select></label>
     <label>Привод от<select id="kitB"><option value=""${!K.b?' selected':''}>— автоматически (самая дешёвая оферта с приводом)</option><option value="none"${K.b==='none'?' selected':''}>— не добавлять привод</option>${o2(K.b)}</select></label>
+    <label>Нумерация позиций<select id="numSrc"><option value=""${!S.numSrc?' selected':''}>как в запросе клиента${S.req.items.some(i=>i.noOrig!=null)?' (вернуть)':''}</option>${S.offers.map(o=>`<option value="${esc(o.id)}"${S.numSrc===o.id?' selected':''}>как в оферте: ${esc(offName(o))}</option>`).join('')}</select></label>
     <label>Как показывать комплект<select id="kitMode"><option value="sep"${K0.mode!=='one'?' selected':''}>арматура и привод отдельными строками (привод под арматурой)</option><option value="one"${K0.mode==='one'?' selected':''}>одним комплектом (одна цена)</option></select></label>
     ${manual?`<button class="btn" id="kitReset" type="button">Сбросить ручной выбор в строках (${manual})</button>`:''}</div></div>`
+}
+/* нумерация позиций: как в запросе клиента или как в оферте поставщика (все ссылки пересчитываются) */
+function renumberBy(offerId){
+  if(!S.req)return false;
+  const items=S.req.items,map={};
+  if(!offerId){items.forEach(it=>{if(it.noOrig!=null)map[it.no]=String(it.noOrig)})}
+  else{
+    const o=S.offers.find(x=>x.id===offerId);if(!o)return false;
+    const seen=[];o.lines.forEach(l=>{const k=String(l.item||'');if(k&&items.some(i=>i.no===k)&&!seen.includes(k))seen.push(k)});
+    items.forEach(it=>{if(!seen.includes(it.no))seen.push(it.no)});
+    seen.forEach((old,i)=>{map[old]=String(i+1)});
+  }
+  const rm=k=>map[k]!=null?map[k]:k;
+  items.forEach(it=>{if(map[it.no]!=null){if(offerId&&it.noOrig==null)it.noOrig=it.no;const n=map[it.no];if(!offerId)delete it.noOrig;it.no=n}});
+  items.sort((a,b)=>(parseFloat(a.no)||0)-(parseFloat(b.no)||0));
+  S.offers.forEach(o=>o.lines.forEach(l=>{if(l.item)l.item=rm(String(l.item))}));
+  const nr={};Object.keys(S.rows).forEach(k=>{const b=k.split('.')[0];nr[rm(b)+k.slice(b.length)]=S.rows[k]});S.rows=nr;
+  if(S.optCfg){const no={};Object.keys(S.optCfg).forEach(k=>{const m=k.match(/^alt:([^:]+):(.*)$/);no[m?'alt:'+rm(m[1])+':'+m[2]:k]=S.optCfg[k]});S.optCfg=no}
+  if(S.dwg){const nd={};Object.keys(S.dwg).forEach(k=>{nd[rm(k)]=S.dwg[k]});S.dwg=nd}
+  Object.keys(S.tr||{}).forEach(l=>{const t=S.tr[l];if(t&&t.items)t.items.forEach(i=>{i.no=rm(String(i.no))})});
+  S.numSrc=offerId||'';S.actMap=null;S.ai=null;if(S.client)S.client.auto=false;
+  Object.keys(S.tr||{}).forEach(l=>{if(S.tr[l])S.tr[l].hash=itemsHash()});
+  return true;
 }
 function rowInfo(it){
   const rw=S.rows[it.no]||{},cs=cands(it.no).filter(x=>x.eur!=null),b=best(it.no);
@@ -1394,7 +1437,7 @@ function calcXlsx(){
   const KX=calcCur()!=='EUR'?'*$H$2':'',KV=calcFx();
   const ws=XLSX.utils.aoa_to_sheet(A);
   let r=4;const first=r;
-  rows.forEach(x=>{
+  const rowBody=x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
     if(isSplit(x)){splitParts(x).forEach((pt,k)=>wrP({no:k?'':it.no,dd:(k?'     ↳ ':'')+splitLbl(CD,it,k,pt),desc:'',qty:x.q,cur:(pt.o.currency||'').toUpperCase(),p0:pt.cur,eurU:pt.eur,mk:mkFor(it,pt.o)}));return}
     ws['A'+r]={t:'s',v:it.no};ws['B'+r]={t:'s',v:CD[it.no]||(it.name+(it.params?', '+it.params:''))};
@@ -1411,14 +1454,15 @@ function calcXlsx(){
     if(x.ch&&x.ch.comp)x.ch.parts.forEach(p=>{const c2=p.o.currency||'';
       ws['B'+r]={t:'s',v:'     ↳ '+partLabelX(p)};ws['F'+r]={t:'n',v:p.cur};ws['I'+r]={t:'n',v:mkFor(it,p.o)};
       ws['G'+r]=c2==='PLN'?{t:'n',f:`F${r}/$J$3${KX}`}:c2==='EUR'?{t:'n',f:`F${r}${KX}`}:(KX?{t:'n',f:`${Math.round(p.eur*100)/100}${KX}`}:{t:'n',v:Math.round(p.eur*100)/100});r++});
-  });
+  };
+  rows.forEach(x=>{rowBody(x);altOf(x.it).forEach(o=>wrP(inlineOpt(o)))});
   function wrP(x){ws['A'+r]={t:'s',v:x.no==null?'Опц.':x.no};ws['B'+r]={t:'s',v:x.dd!=null?x.dd:optTag(x)+x.desc};ws['C'+r]={t:'n',v:x.qty};ws['F'+r]={t:'n',v:x.p0};
     ws['G'+r]=x.cur==='PLN'?{t:'n',f:`F${r}/$J$3${KX}`}:x.cur==='EUR'?{t:'n',f:`F${r}${KX}`}:(KX?{t:'n',f:`${r2(x.eurU*100)/100}${KX}`}:{t:'n',v:r2(x.eurU*100)/100});
-    ws['I'+r]={t:'n',v:x.mk};ws['D'+r]={t:'n',f:`ROUND(G${r}*I${r},2)`};ws['E'+r]={t:'n',f:`D${r}*C${r}`};ws['H'+r]={t:'n',f:`G${r}*C${r}`};r++}
+    ws['I'+r]={t:'n',v:x.mk};ws['D'+r]={t:'n',f:`ROUND(G${r}*I${r},2)`};if(!x.inl){ws['E'+r]={t:'n',f:`D${r}*C${r}`};ws['H'+r]={t:'n',f:`G${r}*C${r}`}}r++}
   optInc().forEach(wrP);
   const last=r-1;
   ws['B'+r]={t:'s',v:CLX().tot};ws['E'+r]={t:'n',f:`SUM(E${first}:E${last})`};ws['H'+r]={t:'n',f:`SUM(H${first}:H${last})`};
-  {const sp=optCalc();if(sp.length){r+=2;ws['B'+r]={t:'s',v:'Опции поставщика (в итог не входят)'};r++;sp.forEach(wrP)}}
+  {const sp=optCalc().filter(x=>!x.alt);if(sp.length){r+=2;ws['B'+r]={t:'s',v:optHdr()};r++;optGroups(sp).forEach(g=>{ws['B'+r]={t:'s',v:'— '+g.title+' —'};r++;g.items.forEach(wrP)})}}
   {const cb=calcCodeAoA();if(cb.length){r+=2;cb.forEach(b=>{ws['B'+r]={t:'s',v:b.title};r++;ws['B'+r]={t:'s',v:b.head[0]};ws['C'+r]={t:'s',v:b.head[1]};r++;b.rows.forEach(x=>{ws['B'+r]={t:'s',v:x[0]};ws['C'+r]={t:'s',v:x[1]};r++});r++})}}
   ws['!ref']=`A1:J${r}`;ws['!cols']=[{wch:5},{wch:70},{wch:8},{wch:12},{wch:12},{wch:12},{wch:14},{wch:16},{wch:9},{wch:14}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Kalkulator ofertowy MVA');if(dwgPositions().length)dwgSheetX(wb);return xblob(wb);
@@ -1599,6 +1643,13 @@ const cliTotal=rows=>rows.reduce((a,x)=>a+(x.sum||0),0);
 /* опции поставщика (строки с пометкой «опция»): отдельный блок для клиента, в итог не входят */
 const optLbl=()=>S.clientLang==='uk'?'Додаткові опції (до загальної вартості не включені)':'Дополнительные опции (в итоговую стоимость не включены)';
 const optCfg=id=>((S.optCfg||(S.optCfg={}))[id]||(S.optCfg[id]={}));
+function inlineOpt(o){const uk=S.clientLang==='uk';return Object.assign({},o,{no:'',inl:true,dd:'     ↳ '+(uk?'ОПЦІЯ (не входить у підсумок; ціна за 1 шт.): ':'ОПЦИЯ (не входит в итог; цена за 1 шт.): ')+o.text+(uk?' (до поз. ':' (к поз. ')+o.itemNo+')'+o.offT})}
+const altOf=it=>optCalc().filter(o=>o.alt&&o.itemNo===it.no);
+function optGroups(list){
+  const idx=no=>{const i=S.req.items.findIndex(x=>x.no===no);return i<0?1e6:i},uk=S.clientLang==='uk',g={};
+  list.forEach(x=>{const k=x.itemNo||'';(g[k]=g[k]||[]).push(x)});
+  return Object.keys(g).sort((a,b)=>idx(a)-idx(b)).map(k=>{const it=S.req.items.find(x=>x.no===k);return{no:k,items:g[k],title:k?(uk?'До поз. ':'К поз. ')+k+(it?' — '+String(it.name||'').replace(/\s+/g,' ').slice(0,70):''):(uk?'Інші опції постачальника':'Прочие опции поставщика')}})}
+const optHdr=()=>S.clientLang==='uk'?'Опції постачальника (до підсумку не входять)':'Опции поставщика (в итог не входят)';
 function optRows(all){
   const sups=calcSups(),os=sups.length?sups:S.offers,sx=saleFx(),out=[],L=Lc();
   os.forEach(o=>o.lines.filter(l=>l.opt&&num(l.price)!=null&&num(l.price)>0).forEach(l=>{
@@ -1608,7 +1659,7 @@ function optRows(all){
     const base=(S.clientLang==='uk'?l.dUk:l.dRu)||l.desc||'';
     const desc=cf.desc?cf.desc:stripMakers(base);
     const eurU=num(l.price)/f,uE=r2(eurU*mk),pr=r2(uE*sx);
-    out.push({id:l.id,sup:o.supplier,cur:(o.currency||'').toUpperCase(),p0:num(l.price),eurU,uE,mk,desc,qty:q,unit:L.pcs,price:pr,sum:r2(pr*q),costTE:eurU*q,saleTE:uE*q,show,inc,base:stripMakers(base)});
+    out.push({id:l.id,itemNo:l.item||'',sup:o.supplier,cur:(o.currency||'').toUpperCase(),p0:num(l.price),eurU,uE,mk,desc,qty:q,unit:L.pcs,price:pr,sum:r2(pr*q),costTE:eurU*q,saleTE:uE*q,show,inc,base:stripMakers(base)});
   }));
   S.req.items.forEach(it=>{const r=rowInfo(it);chParts(r.ch).forEach(p=>{if(!p.variants)return;p.variants.filter(v=>v.v!==p.variant&&!v.bad).forEach(v=>{
     const id='alt:'+it.no+':'+p.o.id+':'+v.v,cf=optCfg(id),show=cf.show===true;if(!show&&!all)return;
@@ -1617,7 +1668,7 @@ function optRows(all){
     const text=v.lines.map(l=>[l.article,lineDesc(l)].filter(Boolean).join(' — ')).filter(Boolean).join(' + ');
     const base=(S.clientLang==='uk'?'Альтернативний варіант':'Альтернативный вариант')+' (вариант '+v.v+') к поз. '+it.no+': '+text;
     const desc=cf.desc?cf.desc:stripMakers(base),eurU=v.cur/f,uE=r2(eurU*mk),pr=r2(uE*sx);
-    out.push({id,alt:true,itemNo:it.no,sup:p.o.supplier,cur:(p.o.currency||'').toUpperCase(),p0:v.cur,eurU,uE,mk,desc,qty:q,unit:L.pcs,price:pr,sum:r2(pr*q),costTE:eurU*q,saleTE:uE*q,show,inc:false,base})})})});
+    out.push({id,alt:true,itemNo:it.no,text,offT:offTag(p.o),sup:p.o.supplier,cur:(p.o.currency||'').toUpperCase(),p0:v.cur,eurU,uE,mk,desc,qty:q,unit:L.pcs,price:pr,sum:r2(pr*q),costTE:eurU*q,saleTE:uE*q,show,inc:false,base})})})});
   let k=0,nn=0;out.forEach(x=>{if(x.inc){k++;x.no=String(S.req.items.length+k)}else{nn++;x.no='Опц.'+nn}});
   return out;
 }
@@ -1742,7 +1793,7 @@ async function calcXlsxPretty(){
   hd.forEach((v,i)=>{const x=ws.getCell(3,i+1);x.value=v;x.font=ft({bold:true,color:{argb:'FFFFFFFF'}});x.fill=fillA(NAVY);x.border=bdr(NAVY);x.alignment={horizontal:'center',vertical:'middle',wrapText:true}});
   ws.getRow(3).height=32;
   let r=4;const first=r;
-  rows.forEach(x=>{
+  const rowBody=x=>{
     const it=x.it,o=x.ch&&x.ch.o,cur=o?(o.currency||''):'';
     if(isSplit(x)){splitParts(x).forEach((pt,k)=>{const mk=mkFor(it,pt.o),uE=r2(pt.eur*mk);wrPP({no:k?'':it.no,dd:(k?'     ↳ ':'')+splitLbl(CD,it,k,pt),desc:'',qty:x.q,cur:(pt.o.currency||'').toUpperCase(),p0:pt.cur,eurU:pt.eur,mk,uE,saleTE:uE*x.q,costTE:pt.eur*x.q})});return}
     const set=(col,v,fmt,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fmt)c.numFmt=fmt;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
@@ -1763,13 +1814,14 @@ async function calcXlsxPretty(){
       set('B','     ↳ '+partLabelX(p),null,GR,'left');ws.getCell('B'+r).font=ft({italic:true,color:{argb:'FF555555'}});
       set('F',p.cur,'#,##0.00',GR);
       if(c2==='PLN')set('G',{formula:`F${r}/$J$2${KX}`,result:cc(p.eur)},'#,##0.00',GR);else if(c2==='EUR')set('G',{formula:`F${r}${KX}`,result:cc(p.eur)},'#,##0.00',GR);else set('G',KX?{formula:`${Math.round(p.eur*100)/100}${KX}`,result:cc(p.eur)}:Math.round(p.eur*100)/100,'#,##0.00',GR);
-      r++});});
+      r++});};
+  rows.forEach(x=>{rowBody(x);altOf(x.it).forEach(o=>wrPP(inlineOpt(o)))});
   function wrPP(x,sep){
     const set=(col,v,fm,fill,al)=>{const c=ws.getCell(col+r);c.value=v;c.font=ft();c.border=bdr();if(fm)c.numFmt=fm;if(fill)c.fill=fillA(fill);c.alignment={vertical:'middle',horizontal:al||'right',wrapText:col==='B'}};
     set('A',x.no==null?'Опц.':x.no,null,null,'center');set('B',x.dd!=null?xv(x.dd):optTag(x)+xv(x.desc),null,null,'left');set('C',x.qty,'0.##',null,'center');set('F',x.p0,'#,##0.00','FFFCE4E4');
     set('G',x.cur==='PLN'?{formula:`F${r}/$J$2${KX}`,result:cc(x.eurU)}:x.cur==='EUR'?{formula:`F${r}${KX}`,result:cc(x.eurU)}:(KX?{formula:`${r2(x.eurU*100)/100}${KX}`,result:cc(x.eurU)}:r2(x.eurU*100)/100),'#,##0.00','FFFCE4E4');
     set('I',x.mk,'0.00');ws.getCell('I'+r).font=ft({color:{argb:'FF0000FF'}});ws.getCell('I'+r).fill=fillA('FFFFFF99');
-    set('D',{formula:`ROUND(G${r}*I${r},2)`,result:cc(x.uE)},'#,##0.00','FFE2F0D9');set('E',{formula:`D${r}*C${r}`,result:cc(x.saleTE)},'#,##0.00','FFE2F0D9');set('H',{formula:`G${r}*C${r}`,result:cc(x.costTE)},'#,##0.00','FFFCE4E4');
+    set('D',{formula:`ROUND(G${r}*I${r},2)`,result:cc(x.uE)},'#,##0.00','FFE2F0D9');if(!x.inl){set('E',{formula:`D${r}*C${r}`,result:cc(x.saleTE)},'#,##0.00','FFE2F0D9');set('H',{formula:`G${r}*C${r}`,result:cc(x.costTE)},'#,##0.00','FFFCE4E4')}else{set('E',null,null,'FFF2F2F2');set('H',null,null,'FFF2F2F2')}
     ws.getRow(r).height=Math.max(22,14*linesEst(x.dd!=null?x.dd:x.desc,70)+6);r++}
   optInc().forEach(x=>wrPP(x));
   const last=r-1;
@@ -1778,7 +1830,7 @@ async function calcXlsxPretty(){
   ws.getCell('B'+r).alignment={horizontal:'right'};
   const t=totals();r+=2;
   [[CLX().mg,{formula:`E${r-2}-H${r-2}`,result:cc(t.margin)},'#,##0.00'],[CLX().mgp,{formula:`IF(E${r-2}=0,0,(E${r-2}-H${r-2})/E${r-2})`,result:t.pct/100},'0.0%']].forEach(([k,v,fm],i)=>{const a=ws.getCell('B'+(r+i));a.value=k;a.font=ft({bold:true});a.alignment={horizontal:'right'};const b=ws.getCell('E'+(r+i));b.value=v;b.numFmt=fm;b.font=ft({bold:true});b.border=bdr()});
-  {const sp=optCalc();if(sp.length){r+=3;ws.mergeCells(`A${r}:J${r}`);const oh=ws.getCell('A'+r);oh.value='Опции поставщика (в итог не входят)';oh.font=ft({bold:true,color:{argb:NAVY}});r++;sp.forEach(x=>wrPP(x))}}
+  {const sp=optCalc().filter(x=>!x.alt);if(sp.length){r+=3;ws.mergeCells(`A${r}:J${r}`);const oh=ws.getCell('A'+r);oh.value=optHdr();oh.font=ft({bold:true,color:{argb:NAVY}});r++;optGroups(sp).forEach(g=>{ws.mergeCells(`B${r}:J${r}`);const gh=ws.getCell('B'+r);gh.value=g.title;gh.font=ft({bold:true});gh.fill=fillA(TOTAL);gh.border=bdr();ws.getRow(r).height=18;r++;g.items.forEach(x=>wrPP(x))})}}
   {const cb=calcCodeAoA();if(cb.length){r+=2;cb.forEach(b=>{
     ws.mergeCells(`B${r}:J${r}`);const th=ws.getCell('B'+r);th.value=b.title;th.font=ft({bold:true,color:{argb:'FFFFFFFF'}});th.fill=fillA(NAVY);ws.getRow(r).height=20;r++;
     [b.head].concat(b.rows).forEach((x,i)=>{ws.mergeCells(`C${r}:J${r}`);const a=ws.getCell('B'+r),t=ws.getCell('C'+r);a.value=x[0];t.value=x[1];[a,t].forEach(c=>{c.font=ft({bold:i===0||/^(Повний код|Полный код)$/.test(x[0])});c.border=bdr();c.alignment={vertical:'top',wrapText:true};if(i===0)c.fill=fillA(TOTAL)});
@@ -1814,7 +1866,7 @@ function docCalc(){
   const rows=S.req.items.map(rowInfo),t=totals(),cu=saleCur(),cu0=calcCur(),CD=calcDescMap(),sups=calcSups();
   return{fit:true,title:'Kalkulator ofertowy MVA — '+S.name,meta:[['Дата',dRuF(today())],['Курс PLN/EUR',String(S.rate)+(S.fxAuto!==false?' (НБП'+(S.rateDate?' '+S.rateDate:'')+')':' (задан вручную)')],...(cu0!=='EUR'?[['Валюта калькулятора',cu0+' (курс '+fmt(calcFx(),4)+' за 1 EUR)']]:[]),['Наценка по умолчанию','×'+S.markup],...(sups.length?[['Поставщик',sups.map(o=>(o.supplier||'')+(o.number?' (оферта №'+o.number+')':'')).join('; ')]]:[])],landscape:true,
    blocks:[{t:'table',head:['№','Позиция','Кол-во','Цена пост.',cu0+'/ед','Наценка ×','Клиенту/ед, '+cu0,'Сумма клиенту, '+cu0,'Маржа %'],w:[4,47,6,10,8,7,10,11,7],al:['c','l','c','r','r','c','r','r','r'],
-    rows:rows.flatMap(r=>isSplit(r)?splitParts(r).map((pt,k)=>{const mk=mkFor(r.it,pt.o),uE=r2(pt.eur*mk);return[k?'':r.it.no,(k?'   ↳ ':'')+splitLbl(CD,r.it,k,pt),fmt(r.q,r.q%1?2:0),fmt(pt.cur)+' '+(pt.o.currency||''),fmt(cc(pt.eur)),'×'+mk,fmt(cc(uE)),fmt(cc(uE*r.q)),fmt((uE-pt.eur)/uE*100,1)]}):[[r.it.no,CD[r.it.no]||(r.it.name+(r.it.params?', '+r.it.params:'')),fmt(r.q,r.q%1?2:0),chPriceS(r.ch),fmt(cc(r.cost)),'×'+(+r.markup.toFixed(3)),fmt(cc(r.sale)),fmt(cc(r.saleT)),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]).concat(optInc().concat(optCalc()).map(x=>[x.no==null?'Опц.':x.no,optTag(x)+x.desc,fmt(x.qty,x.qty%1?2:0),fmt(x.p0)+' '+x.cur,fmt(cc(x.eurU)),'×'+x.mk,fmt(cc(x.uE)),fmt(cc(x.saleTE)),fmt((x.uE-x.eurU)/x.uE*100,1)])),total:['Итого, '+cu0,fmt(cc(t.sale))]},
+    rows:rows.flatMap(r=>(isSplit(r)?splitParts(r).map((pt,k)=>{const mk=mkFor(r.it,pt.o),uE=r2(pt.eur*mk);return[k?'':r.it.no,(k?'   ↳ ':'')+splitLbl(CD,r.it,k,pt),fmt(r.q,r.q%1?2:0),fmt(pt.cur)+' '+(pt.o.currency||''),fmt(cc(pt.eur)),'×'+mk,fmt(cc(uE)),fmt(cc(uE*r.q)),fmt((uE-pt.eur)/uE*100,1)]}):[[r.it.no,CD[r.it.no]||(r.it.name+(r.it.params?', '+r.it.params:'')),fmt(r.q,r.q%1?2:0),chPriceS(r.ch),fmt(cc(r.cost)),'×'+(+r.markup.toFixed(3)),fmt(cc(r.sale)),fmt(cc(r.saleT)),r.cost!=null&&r.sale?fmt((r.sale-r.cost)/r.sale*100,1):'—'],...docSubs(r)]).concat(altOf(r.it).map(o=>['',inlineOpt(o).dd,fmt(o.qty,o.qty%1?2:0),fmt(o.p0)+' '+o.cur,fmt(cc(o.eurU)),'×'+o.mk,fmt(cc(o.uE)),'—','']))).concat(optInc().concat(optGroups(optCalc().filter(x=>!x.alt)).flatMap(g=>g.items)).map(x=>[x.no==null?'Опц.':x.no,optTag(x)+x.desc,fmt(x.qty,x.qty%1?2:0),fmt(x.p0)+' '+x.cur,fmt(cc(x.eurU)),'×'+x.mk,fmt(cc(x.uE)),fmt(cc(x.saleTE)),fmt((x.uE-x.eurU)/x.uE*100,1)])),total:['Итого, '+cu0,fmt(cc(t.sale))]},
     {t:'kv',items:[['Себестоимость, '+cu0,fmt(cc(t.cost))],['Цена клиенту, '+cu0,fmt(cc(t.sale))],['Маржа, '+cu0,fmt(cc(t.margin))],['Маржа от цены клиенту',fmt(t.pct,1)+'%'],...(saleCur()!==cu0?[['Цена клиенту, '+cu,fmt(cliTotal(cliRows()))]]:[])].concat(t.miss?[['Позиций без цены',String(t.miss)]]:[])},
     {t:'p',text:'Внутренний документ. Содержит маржу и курс, клиенту не отправлять.',note:true}]};
 }
@@ -2514,6 +2566,7 @@ function vCalc(m){
     tr.querySelector('[data-q]').onchange=e=>{const v=e.target.value.trim();S.rows[no]=Object.assign(S.rows[no]||{},{qty:v===''?null:num(v)});S.client.auto=false;changed();renderAll()};
     tr.querySelector('[data-mk]').onchange=e=>{S.rows[no]=Object.assign(S.rows[no]||{},{markup:e.target.value===''?null:num(e.target.value)});changed();renderAll()}});
   {const ka=$('#kitA'),kb=$('#kitB');if(ka){const upd=()=>{S.kit={a:ka.value,b:kb.value};S.client.auto=false;S.ai=null;changed();renderAll()};ka.onchange=upd;kb.onchange=upd}
+   const ns=$('#numSrc');if(ns)ns.onchange=()=>{if(renumberBy(ns.value)){changed();renderAll();toast(ns.value?'Позиции пронумерованы по оферте. Номера клиента сохранены, их можно вернуть.':'Возвращена нумерация запроса клиента')}};
    const km=$('#kitMode');if(km)km.onchange=()=>{S.kitMode=km.value;Object.values(S.rows).forEach(r=>{if(r)delete r.split});S.client.auto=false;S.ai=null;changed();renderAll()};
    const kr=$('#kitReset');if(kr)kr.onclick=()=>{Object.values(S.rows).forEach(r=>{if(r){delete r.offerId;delete r.add}});S.client.auto=false;S.ai=null;changed();renderAll()}}
   {const go=$('#cbGo');if(go)go.onclick=()=>{const A=$('#cbA').value,B=$('#cbB').value;if(A===B){toast('Выберите две разные оферты');return}let n=0;
@@ -3032,9 +3085,23 @@ const DW_V=[['fl','Фланец арматуры (ISO 5211 / 5210)','text','F10 
 const DW_A=[['type','Привод (тип)','text','напр. SQEx 14.2'],['fl','Фланец привода','text','F14/F16'],['bore','Макс. Ø отверстия / вала (Б-тип), мм','number'],['stem','Макс. Ø штока (тип A), мм','number'],['Tmin','Момент привода мин., Нм','number'],['Tmax','Момент привода макс., Нм','number'],['Tset','Момент отключения (задаётся), Нм','number'],['rpm','Скорость на выходе, об/мин (многооборотный)','number'],['t90','Время хода на 90°, с (неполноповоротный)','number']];
 const dwgRow=no=>{S.dwg=S.dwg||{};const d=S.dwg[no]=S.dwg[no]||{};d.files=d.files||[];d.v=d.v||{};d.a=d.a||{};d.ai=d.ai||[];if(d.k==null)d.k=1.3;return d};
 const dwgHas=d=>d&&(Object.values(d.v||{}).some(x=>x!==''&&x!=null)||Object.values(d.a||{}).some(x=>x!==''&&x!=null));
+function dwgAuto(no){
+  const it=S.req&&S.req.items.find(x=>x.no===no);if(!it)return{};
+  let r;try{r=rowInfo(it)}catch(e){return{}}
+  const ls=chParts(r.ch).flatMap(p=>p.lines||[]).filter(l=>l.equip&&l.equip.length);if(!ls.length)return{};
+  const l=ls[0],E=l.equip,g=re=>E.find(e=>re.test(String(e.code||''))),out={};
+  out.type=String(l.article||'').trim();
+  const c=g(/po[łl][aą]czenie z armatur|приєднання до арматури|присоединение к арматуре/i);
+  if(c){const m=String(c.txt||'').match(/F\d\d/i);if(m)out.fl=m[0].toUpperCase();const t=String(c.txt||'').match(/(\d+[.,]?\d*)\s*s\s*\/\s*90/);if(t)out.t90=num(t[1])}
+  const z=g(/zakres momentu|діапазон моменту|диапазон момента/i);
+  if(z){const n=(String(z.txt||'').match(/\d+[.,]?\d*/g)||[]).map(num);if(n.length>=2){out.Tmin=n[0];out.Tmax=n[n.length-1]}}
+  const s=g(/nastawa|налаштування|уставка/i);
+  if(s){const n=String(s.txt||'').match(/\d+[.,]?\d*/);if(n)out.Tset=num(n[0])}
+  return out}
+const dwgNE=o=>Object.fromEntries(Object.entries(o||{}).filter(([k,x])=>x!==''&&x!=null));
 function dwgCheck(no){
   const d=(S.dwg||{})[no];if(!d||!dwgHas(d))return null;
-  const Tx=(ru,uk)=>S.clientLang==='uk'?uk:ru,v=d.v||{},a=d.a||{},k=num(d.k)||1.3,out=[];
+  const Tx=(ru,uk)=>S.clientLang==='uk'?uk:ru,v=d.v||{},a=Object.assign({},dwgAuto(no),dwgNE(d.a)),k=num(d.k)||1.3,out=[];
   const add=(n,st,vv,av,note)=>out.push({n,st,vv:vv||'',av:av||'',note:note||''});
   const fv=flSet(v.fl),fa=flSet(a.fl),std=v.sh==='stem'?'ISO 5210':'ISO 5211';
   const LN={fl:Tx('Присоединительный фланец ('+std+')','Приєднувальний фланець ('+std+')'),sh:Tx('Вал / шток','Вал / шток'),t:Tx('Момент (с запасом)','Момент (із запасом)'),ts:Tx('Момент отключения','Момент вимкнення'),tm:Tx('Время хода','Час ходу')};
@@ -3066,29 +3133,39 @@ const DW_ST=()=>({ok:'OK',warn:S.clientLang==='uk'?'Увага':'Внимани�
 function dwgVerdict(c){return c.some(x=>x.st==='bad')?'bad':c.some(x=>x.st==='warn')?'warn':c.some(x=>x.st==='ok')?'ok':'na'}
 function dwgPositions(){return S.req?S.req.items.map(it=>({it,c:dwgCheck(it.no)})).filter(x=>x.c&&x.c.length):[]}
 const dwgSheetName=()=>S.clientLang==='uk'?'Перевірка підбору':'Проверка подбора';
-function dwgAoA(){
-  const uk=S.clientLang==='uk',ST=DW_ST(),P=dwgPositions();
-  const A=[[dwgSheetName()],[S.name],[],[uk?'Поз.':'Поз.',uk?'Параметр':'Параметр',uk?'Арматура':'Арматура',uk?'Привід':'Привод',uk?'Результат':'Результат',uk?'Коментар':'Комментарий']];
-  P.forEach(({it,c})=>{const d=dwgRow(it.no);A.push([it.no,(it.name||'')+(d.a.type?'  ·  '+(uk?'привід ':'привод ')+d.a.type:''),'','','','']);c.forEach(x=>A.push(['',x.n,x.vv,x.av,ST[x.st],x.note]));A.push([])});
-  A.push([uk?'Фланці: ISO 5211 (неповнообертові), ISO 5210 (багатообертові). Запас за моментом задається на позицію. Розрахункова перевірка; остаточне підтвердження комплектності та посадки — у виробника.':'Фланцы: ISO 5211 (неполноповоротные), ISO 5210 (многооборотные). Запас по моменту задаётся на позицию. Расчётная проверка; окончательное подтверждение комплектности и посадки — у производителя.']);
-  return A;
-}
-function dwgSheetX(wb){const ws=XLSX.utils.aoa_to_sheet(dwgAoA());ws['!cols']=[{wch:6},{wch:44},{wch:30},{wch:26},{wch:14},{wch:70}];XLSX.utils.book_append_sheet(wb,ws,dwgSheetName())}
+function dwgSumRows(){
+  const uk=S.clientLang==='uk',ST=DW_ST(),out=[];
+  dwgPositions().forEach(({it,c})=>{
+    const d=dwgRow(it.no),v=d.v||{},a=Object.assign({},dwgAuto(it.no),Object.fromEntries(Object.entries(d.a||{}).filter(([k,x])=>x!==''&&x!=null)));
+    const r=rowInfo(it),dn=(String(it.name||'').match(/DN\s*\d+(\s*PN\s*\d+)?/i)||[''])[0].replace(/\s+/g,' ');
+    const sh=v.shA?(v.sh==='stem'?(uk?'шток Ø ':'шток Ø ')+v.shA:v.sh==='key'?'Ø '+v.shA+(v.key?', '+(uk?'шпонка ':'шпонка ')+v.key:''):'□ '+v.shA):'';
+    const cp=a.bore?(v.sh==='sq'||!v.sh?'□/Ø до ':'Ø до ')+a.bore+' '+(uk?'мм':'мм'):(a.stem?(uk?'шток до Ø ':'шток до Ø ')+a.stem:'');
+    const bad=c.filter(x=>x.st==='bad'||x.st==='warn').map(x=>x.n+': '+x.note).join('; ');
+    out.push({no:it.no,dn,act:(a.type||'')+(a.fl?', '+a.fl:''),q:r.q,T:num(v.T),Tm:num(a.Tmax),fv:v.fl||'',fa:a.fl||'',sh,cp,Ts:num(a.Tset),st:ST[dwgVerdict(c)==='na'?'na':dwgVerdict(c)],note:bad||c.filter(x=>x.note).map(x=>x.note).slice(0,2).join('; ')});
+  });
+  return out}
+function dwgHead(){const uk=S.clientLang==='uk';return uk?['Поз.','DN','Привід (оферта)','К-сть','Потрібний момент крана, Нм','Макс. момент привода, Нм','Запас, %','Фланець крана','Фланець привода','Кінець вала крана','Муфта привода','Уставка, Нм','Статус','Що перевірити / виправити']:['Поз.','DN','Привод (оферта)','Кол-во','Требуемый момент арматуры, Нм','Макс. момент привода, Нм','Запас, %','Фланец арматуры','Фланец привода','Конец вала арматуры','Муфта привода','Уставка, Нм','Статус','Что проверить / исправить']}
+function dwgSheetX(wb){
+  const uk=S.clientLang==='uk',R=dwgSumRows(),A=[[(uk?'Перевірка підбору приводів':'Проверка подбора приводов')+' — '+S.name],dwgHead()];
+  const ws=XLSX.utils.aoa_to_sheet(A);
+  R.forEach((x,i)=>{const r=i+3,row=[x.no,x.dn,x.act,x.q,x.T,x.Tm,null,x.fv,x.fa,x.sh,x.cp,x.Ts,x.st,x.note];
+    row.forEach((v,j)=>{const ref=XLSX.utils.encode_cell({r:r-1,c:j});if(j===6){ws[ref]=x.T&&x.Tm?{t:'n',f:`F${r}/E${r}-1`,z:'0%'}:{t:'s',v:''}}else if(v!=null&&v!=='')ws[ref]={t:typeof v==='number'?'n':'s',v:typeof v==='number'?v:String(v)}})});
+  ws['!ref']='A1:N'+(R.length+2);ws['!cols']=[{wch:6},{wch:14},{wch:34},{wch:8},{wch:16},{wch:16},{wch:9},{wch:14},{wch:14},{wch:22},{wch:20},{wch:12},{wch:22},{wch:70}];
+  XLSX.utils.book_append_sheet(wb,ws,dwgSheetName())}
 function dwgSheetEJ(wb){
-  const A=dwgAoA(),ws=wb.addWorksheet(dwgSheetName(),{views:[{showGridLines:false}],pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}});
-  ws.columns=[{width:6},{width:44},{width:30},{width:26},{width:14},{width:70}];
+  const uk=S.clientLang==='uk',R=dwgSumRows(),ws=wb.addWorksheet(dwgSheetName(),{views:[{state:'frozen',ySplit:2,showGridLines:false}],pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  ws.columns=[{width:6},{width:14},{width:34},{width:8},{width:16},{width:16},{width:9},{width:14},{width:14},{width:22},{width:20},{width:12},{width:22},{width:70}];
   const ft=(o={})=>Object.assign({name:XF,size:10},o),ST=DW_ST(),stIv={};Object.keys(ST).forEach(k=>stIv[ST[k]]=k);
   const col={ok:'FFC6EFCE',warn:'FFFFEB9C',bad:'FFFFC7CE',info:'FFDDEBF7'};
-  ws.mergeCells('A1:F1');const t=ws.getCell('A1');t.value=A[0][0];t.font=ft({size:15,bold:true,color:{argb:'FFFFFFFF'}});t.fill=fillA(NAVY);t.alignment={vertical:'middle',indent:1};ws.getRow(1).height=26;
-  ws.getCell('A2').value=A[1][0];ws.getCell('A2').font=ft({bold:true});
-  A[3].forEach((v,i)=>{const c=ws.getCell(4,i+1);c.value=v;c.font=ft({bold:true,color:{argb:'FFFFFFFF'}});c.fill=fillA(NAVY);c.border=bdr(NAVY);c.alignment={horizontal:'center',vertical:'middle'}});
-  let r=5;
-  for(let i=4;i<A.length-1;i++){const row=A[i];if(!row.length){r++;continue}
-    row.forEach((v,j)=>{const c=ws.getCell(r,j+1);c.value=v===''?null:v;c.font=ft({bold:row[0]!==''});c.alignment={vertical:'top',wrapText:true,horizontal:j===0?'center':'left'};if(row[0]!==''){c.fill=fillA(TOTAL)}else c.border=bdr();
-      if(j===4&&row[0]===''&&stIv[v]&&col[stIv[v]]){c.fill=fillA(col[stIv[v]]);c.font=ft({bold:true});c.alignment={horizontal:'center',vertical:'top'}}});
-    if(row[0]!=='')ws.mergeCells(`B${r}:F${r}`);
-    ws.getRow(r).height=Math.max(16,13*Math.ceil(String(row[5]||'').length/78)+4);r++}
-  ws.mergeCells(`A${r+1}:F${r+1}`);const n=ws.getCell('A'+(r+1));n.value=A[A.length-1][0];n.font=ft({size:9,italic:true,color:{argb:'FF5B6B75'}});n.alignment={wrapText:true,vertical:'top'};ws.getRow(r+1).height=28;
+  ws.mergeCells('A1:N1');const t=ws.getCell('A1');t.value=(uk?'Перевірка підбору приводів':'Проверка подбора приводов')+' — '+S.name;t.font=ft({size:14,bold:true,color:{argb:'FFFFFFFF'}});t.fill=fillA(NAVY);t.alignment={vertical:'middle',indent:1};ws.getRow(1).height=26;
+  dwgHead().forEach((v,i)=>{const c=ws.getCell(2,i+1);c.value=v;c.font=ft({bold:true,color:{argb:'FFFFFFFF'}});c.fill=fillA(NAVY);c.border=bdr(NAVY);c.alignment={horizontal:'center',vertical:'middle',wrapText:true}});ws.getRow(2).height=44;
+  R.forEach((x,i)=>{const r=i+3;
+    [x.no,x.dn,x.act,x.q,x.T,x.Tm,null,x.fv,x.fa,x.sh,x.cp,x.Ts,x.st,x.note].forEach((v,j)=>{const c=ws.getCell(r,j+1);
+      if(j===6){c.value=x.T&&x.Tm?{formula:`F${r}/E${r}-1`,result:x.Tm/x.T-1}:null;c.numFmt='0%'}else c.value=v===''?null:v;
+      c.font=ft({bold:j===0});c.border=bdr();c.alignment={vertical:'top',wrapText:true,horizontal:[0,3,4,5,6,11].includes(j)?'center':'left'};
+      if(j===12&&stIv[v]&&col[stIv[v]]){c.fill=fillA(col[stIv[v]]);c.font=ft({bold:true})}});
+    ws.getRow(r).height=Math.max(18,13*Math.ceil(String(x.note||'').length/80)+4)});
+  const n=R.length+4;ws.mergeCells(`A${n}:N${n}`);const nn=ws.getCell('A'+n);nn.value=uk?'Фланці: ISO 5211 (неповнообертові), ISO 5210 (багатообертові). Запас за моментом задається на позицію. Розрахункова перевірка; остаточне підтвердження комплектності та посадки — у виробника.':'Фланцы: ISO 5211 (неполноповоротные), ISO 5210 (многооборотные). Запас по моменту задаётся на позицию. Расчётная проверка; окончательное подтверждение комплектности и посадки — у производителя.';nn.font=ft({size:9,italic:true,color:{argb:'FF5B6B75'}});nn.alignment={wrapText:true,vertical:'top'};ws.getRow(n).height=28;
 }
 async function dwgXlsxPretty(){const EJ=await loadExcelJS(),wb=new EJ.Workbook();wb.creator='MVA Industries';dwgSheetEJ(wb);return new Blob([await wb.xlsx.writeBuffer()],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}
 function dwgXlsx(){const wb=XLSX.utils.book_new();dwgSheetX(wb);return xblob(wb)}
@@ -3146,7 +3223,7 @@ const dwgOpen=new Set();
 function vDwg(m){
   if(!S.req){m.innerHTML='<section class="card"><h2>Чертежи и подбор</h2><p class="sub">Сначала загрузите запрос на вкладке «Запрос».</p></section>';return}
   const ST=DW_ST(),CLS={ok:'ok',warn:'warn',bad:'crit',na:'',info:'info'};
-  const fld=(side,f,d)=>{const [key,lab,typ,ph]=f,val=d[side][key],ai=d.ai.includes(side+'.'+key);
+  const fld=(side,f,d,AU)=>{const [key,lab,typ,ph0]=f,val=d[side][key],ai=d.ai.includes(side+'.'+key),ph=side==='a'&&AU&&AU[key]!=null&&AU[key]!==''?'из оферты: '+AU[key]:ph0;
     const lbl=`<span>${esc(lab)}${ai?' <b style="color:var(--info)">· ИИ, проверьте</b>':''}</span>`;
     if(typ==='sel')return`<label class="dwf">${lbl}<select data-df="${side}.${key}"><option value="sq"${val==='sq'||!val?' selected':''}>квадрат (ISO 5211)</option><option value="key"${val==='key'?' selected':''}>вал / отверстие со шпонкой</option><option value="stem"${val==='stem'?' selected':''}>шток (многооборотный, ISO 5210)</option></select></label>`;
     return`<label class="dwf">${lbl}<input data-df="${side}.${key}" ${typ==='number'?'type="number" step="any" inputmode="decimal"':'type="text"'} value="${val==null?'':esc(val)}"${ph?` placeholder="${esc(ph)}"`:''}></label>`};
@@ -3158,8 +3235,8 @@ function vDwg(m){
     <div class="row2" style="margin:8px 0">${d.files.map(f=>f.data?`<span class="dwth"><img src="${f.data}" alt="${esc(f.name)}" title="${esc(f.name)}" data-dview="${f.id}"><button type="button" class="btn" data-ddel="${f.id}" aria-label="Удалить">×</button></span>`:`<span class="hint">${esc(f.name)} (изображение не передано при копировании текста; загрузите заново)</span>`).join('')}
       <label class="btn" style="cursor:pointer">+ Чертёж / фото<input type="file" hidden multiple accept="image/*,.pdf" data-dfile="${esc(it.no)}"></label>
       <button class="btn" type="button" data-dai="${esc(it.no)}"${d.files.some(f=>f.data)?'':' disabled'}>Считать с чертежа (ИИ)</button></div>
-    <div class="dwg2"><div><h3 style="font-size:14px;margin:6px 0">Арматура</h3><div class="dwg-grid">${DW_V.map(f=>fld('v',f,d)).join('')}</div></div>
-    <div><h3 style="font-size:14px;margin:6px 0">Привод</h3><div class="dwg-grid">${DW_A.map(f=>fld('a',f,d)).join('')}<label class="dwf"><span>Запас по моменту, ×</span><input data-dk type="number" step="0.05" inputmode="decimal" value="${d.k}"></label></div></div></div>
+    <div class="dwg2"><div><h3 style="font-size:14px;margin:6px 0">Арматура</h3><div class="dwg-grid">${DW_V.map(f=>fld('v',f,d,null)).join('')}</div></div>
+    <div><h3 style="font-size:14px;margin:6px 0">Привод</h3><div class="dwg-grid">${DW_A.map(f=>fld('a',f,d,dwgAuto(it.no))).join('')}<label class="dwf"><span>Запас по моменту, ×</span><input data-dk type="number" step="0.05" inputmode="decimal" value="${d.k}"></label></div></div></div>
     ${c&&c.length?`<table class="xt" style="margin-top:8px"><thead><tr><th>Параметр</th><th>Арматура</th><th>Привод</th><th>Результат</th><th>Комментарий</th></tr></thead><tbody>${c.map(x=>`<tr><td>${esc(x.n)}</td><td>${esc(x.vv)}</td><td>${esc(x.av)}</td><td><span class="pill ${CLS[x.st]}">${esc(ST[x.st])}</span></td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table>`:''}
     </details>`}).join('')}`;
   const D=no=>dwgRow(no);
